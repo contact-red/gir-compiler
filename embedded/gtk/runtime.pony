@@ -17,7 +17,7 @@ iterations as the mailbox processes.
 
 use "actor_pinning"
 use "collections"
-use "gobject_runtime"
+use "../gobject_runtime"
 use "lib:gobject-2.0"
 use "lib:gio-2.0"
 use "lib:glib-2.0"

@@ -90,7 +90,7 @@ primitive EmbeddedResources
     "\n" +
     "use \"actor_pinning\"\n" +
     "use \"collections\"\n" +
-    "use \"gobject_runtime\"\n" +
+    "use \"../gobject_runtime\"\n" +
     "use \"lib:gobject-2.0\"\n" +
     "use \"lib:gio-2.0\"\n" +
     "use \"lib:glib-2.0\"\n" +

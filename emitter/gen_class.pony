@@ -115,7 +115,7 @@ primitive GenClass
     end
     buf.append("\n\n")
 
-    buf.append("use \"gobject_runtime\"\n")
+    buf.append("use \"../gobject_runtime\"\n")
     // Sort library directives lexicographically.
     let sorted_libs = Array[String val]
     for lib in libraries.values() do sorted_libs.push(lib) end
