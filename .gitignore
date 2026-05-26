@@ -1,0 +1,10 @@
+build/
+_corral/
+_repos/
+
+# Local-relative corral dep — corral materializes it here on `corral fetch`.
+# The source of truth lives elsewhere (../../ponylang/ponyc/tools/lib/...).
+pony_compiler/
+
+# Editor
+.claude/

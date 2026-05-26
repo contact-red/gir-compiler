@@ -1,0 +1,16 @@
+{
+  "locks": [
+    {
+      "locator": "github.com/ponylang/ssl.git",
+      "revision": "main"
+    },
+    {
+      "locator": "../libxml2",
+      "revision": "main"
+    },
+    {
+      "locator": "../../ponylang/ponyc/tools/lib/ponylang/pony_compiler",
+      "revision": "main"
+    }
+  ]
+}

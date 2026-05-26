@@ -1,0 +1,30 @@
+{
+  "packages": [
+    "gir",
+    "scanner",
+    "planner",
+    "emitter"
+  ],
+  "deps": [
+    {
+      "locator": "github.com/ponylang/ssl.git",
+      "version": ""
+    },
+    {
+      "locator": "../libxml2",
+      "version": ""
+    },
+    {
+      "locator": "../../ponylang/ponyc/tools/lib/ponylang/pony_compiler",
+      "version": ""
+    }
+  ],
+  "info": {
+    "description": "Pony code generator for GObject ecosystem bindings, driven by GIR",
+    "homepage": "",
+    "license": "",
+    "documentation_url": "",
+    "version": "0.1.0",
+    "name": "gir-compiler"
+  }
+}

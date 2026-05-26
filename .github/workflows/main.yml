@@ -1,0 +1,26 @@
+name: Main
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: main-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  packages: read
+
+jobs:
+  build:
+    name: Build the compiler
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/redvers/pony-dependency-builder:latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: make
+        run: make
+      - name: smoke test
+        run: build/debug/gir-compiler --version
