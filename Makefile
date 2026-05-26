@@ -9,8 +9,6 @@ BUILD_DIR ?= build/$(config)
 SRC_DIR ?= bin
 binary := $(BUILD_DIR)/$(PACKAGE)
 
-PROJECT_ROOT := $(shell pwd)
-
 ifdef config
 	ifeq (,$(filter $(config),debug release))
 		$(error Unknown configuration "$(config)")
@@ -23,10 +21,7 @@ else
 	PONYC_FLAGS = --debug
 endif
 
-# corral's PONYPATH only includes deps; we need to also expose the
-# project root so the CLI can `use "gir"`, `use "scanner"`, etc.
-COMPILE = corral run -- bash -c \
-	'PONYPATH="$$PONYPATH:$(PROJECT_ROOT)" ponyc $(PONYC_FLAGS) --bin-name $(PACKAGE) -o $(BUILD_DIR) $(SRC_DIR)'
+PONYC = $(COMPILE_WITH) $(PONYC_FLAGS) --bin-name $(PACKAGE)
 
 SOURCE_FILES := $(shell find gir scanner planner emitter bin -name '*.pony' 2>/dev/null)
 EMBEDDED_SOURCES := $(shell find embedded -name '*.pony' 2>/dev/null)
@@ -38,7 +33,7 @@ build: $(binary)
 
 $(binary): $(SOURCE_FILES) $(BAKED) | $(BUILD_DIR)
 	$(GET_DEPENDENCIES_WITH)
-	$(COMPILE)
+	$(PONYC) -o $(BUILD_DIR) $(SRC_DIR)
 
 $(BAKED): $(EMBEDDED_SOURCES) tools/bake_embedded.sh
 	tools/bake_embedded.sh > $(BAKED)

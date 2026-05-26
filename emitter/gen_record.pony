@@ -17,7 +17,7 @@
 //
 //     fun raw(): Pointer[U8] tag => _raw
 
-use "gir"
+use "../gir"
 
 
 primitive GenRecord

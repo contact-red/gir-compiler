@@ -20,7 +20,7 @@
 // through to their Pony-name form (which may not resolve if the
 // type isn't in the loaded plan).
 
-use "gir"
+use "../gir"
 
 
 primitive GenCallback

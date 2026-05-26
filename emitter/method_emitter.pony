@@ -15,7 +15,7 @@
 //       MethodOutcome
 //     called once per constructor on every type in T
 
-use "gir"
+use "../gir"
 
 
 primitive MethodEmitter

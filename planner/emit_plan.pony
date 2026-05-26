@@ -9,8 +9,8 @@
 // on disk for the user's source to compile).
 
 use "collections"
-use "gir"
-use "scanner"
+use "../gir"
+use "../scanner"
 
 
 class val EmitPlan

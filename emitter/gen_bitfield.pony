@@ -41,7 +41,7 @@
 // At the FFI boundary the backing integer comes out via `.value()`,
 // matching what C expects.
 
-use "gir"
+use "../gir"
 
 
 primitive GenBitfield

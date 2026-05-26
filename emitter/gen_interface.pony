@@ -14,7 +14,7 @@
 // downstream emitter needs them as constraints for the flattened
 // class methods.
 
-use "gir"
+use "../gir"
 
 
 primitive GenInterface

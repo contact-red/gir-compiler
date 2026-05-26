@@ -29,8 +29,8 @@
 
 use "collections"
 use "files"
-use "gir"
-use "planner"
+use "../gir"
+use "../planner"
 use "ssl/crypto"
 
 

@@ -21,7 +21,7 @@
 // integer back. The type alias forms a sealed union so callers can
 // match exhaustively.
 
-use "gir"
+use "../gir"
 
 
 primitive GenEnum

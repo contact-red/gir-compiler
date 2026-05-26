@@ -12,10 +12,10 @@
 
 use "collections"
 use "files"
-use "emitter"
-use "gir"
-use "planner"
-use "scanner"
+use "../emitter"
+use "../gir"
+use "../planner"
+use "../scanner"
 
 actor Main
   new create(env: Env) =>

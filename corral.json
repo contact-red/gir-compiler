@@ -11,11 +11,7 @@
       "version": ""
     },
     {
-      "locator": "../libxml2",
-      "version": ""
-    },
-    {
-      "locator": "../../ponylang/ponyc/tools/lib/ponylang/pony_compiler",
+      "locator": "github.com/contact-red/libxml2.git",
       "version": ""
     }
   ],

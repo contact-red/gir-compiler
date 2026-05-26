@@ -18,8 +18,8 @@
 
 use "collections"
 use "files"
-use "gir"
-use "pony_compiler"
+use "../gir"
+use "../pony_compiler"
 
 
 class _ScanContext

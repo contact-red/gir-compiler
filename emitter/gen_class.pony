@@ -32,9 +32,9 @@
 // the user can `make scratch_emit && ponyc gen/<ns>/` to check.
 
 use "collections"
-use "gir"
-use "planner"
-use "scanner"
+use "../gir"
+use "../planner"
+use "../scanner"
 
 
 primitive SuppressedConstruction

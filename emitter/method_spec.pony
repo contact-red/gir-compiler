@@ -8,7 +8,7 @@
 // `UnemittableReason val` (the method is in v1's plan but its shape
 // or types fall outside what we can produce).
 
-use "gir"
+use "../gir"
 
 
 // ---- PonyType: closed union of types we know how to spell ----

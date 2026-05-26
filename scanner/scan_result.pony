@@ -18,7 +18,7 @@
 // multiple actors.
 
 use "collections"
-use "gir"
+use "../gir"
 
 
 class val MethodCallRef is (Hashable & Comparable[MethodCallRef])

@@ -21,8 +21,8 @@
 // 64-iteration safety cap prevents a data bug from spinning forever.
 
 use "collections"
-use "gir"
-use "scanner"
+use "../gir"
+use "../scanner"
 
 
 primitive ClosurePlanner

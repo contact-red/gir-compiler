@@ -5,11 +5,7 @@
       "revision": "main"
     },
     {
-      "locator": "../libxml2",
-      "revision": "main"
-    },
-    {
-      "locator": "../../ponylang/ponyc/tools/lib/ponylang/pony_compiler",
+      "locator": "github.com/contact-red/libxml2.git",
       "revision": "main"
     }
   ]

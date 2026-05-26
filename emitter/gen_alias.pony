@@ -19,7 +19,7 @@
 // loaded package. We accept that — the user can either load Gdk's GIR
 // or hand-write a stub GdkRectangle in a sibling package.
 
-use "gir"
+use "../gir"
 
 
 primitive GenAlias
