@@ -69,6 +69,16 @@ class val ScanResult
     used_packages = used_packages'
     method_calls = method_calls'
 
+  new val empty() =>
+    """
+    A ScanResult with no source-derived inputs. Used in docs-mode
+    plans, which emit the entire namespace regardless of what (if
+    any) user code references — there is no source to scan.
+    """
+    referenced_names = recover val Set[String val] end
+    used_packages = recover val Set[String val] end
+    method_calls = recover val Set[MethodCallRef] end
+
 
 type ScanError is
   ( ScanCompileError val
