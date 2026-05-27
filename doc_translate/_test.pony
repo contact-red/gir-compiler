@@ -29,6 +29,7 @@ actor Main is TestList
     test(_TestResolvedTypeRefLink)
     test(_TestResolvedModernClassRef)
     test(_TestResolvedModernMethodRef)
+    test(_TestResolvedModernMethodRefMungesReservedWord)
     test(_TestFencedCodeBlockPassesThrough)
     test(_TestRefsInsideFencedBlockNotTranslated)
     test(_TestInlineCodePassesThrough)
@@ -65,6 +66,14 @@ primitive _Fixtures
     """
     TranslateContext("Gtk", _make_model_with_widget()?)
 
+  fun gtk_model_ctx_with_filter(): TranslateContext val ? =>
+    """
+    A context whose model has Gtk.Filter defined with a `match`
+    method — used to test that doc-URL anchors get the same
+    reserved-word munge the emitter applies (`match` -> `match'`).
+    """
+    TranslateContext("Gtk", _make_model_with_filter()?)
+
   fun _make_minimal_model(): GirModel val ? =>
     let ns = _empty_namespace("Gtk")
     let repos = _wrap_namespace(ns)
@@ -94,6 +103,45 @@ primitive _Fixtures
     let classes = recover val
       let arr = Array[RawGirClass val](1)
       arr.push(widget)
+      arr
+    end
+    let ns = RawGirNamespace(
+      "Gtk", "4.0", "Gtk", "",
+      classes,
+      recover val Array[RawGirInterface val] end,
+      recover val Array[RawGirRecord val] end,
+      recover val Array[RawGirEnumeration val] end,
+      recover val Array[RawGirBitfield val] end,
+      recover val Array[RawGirCallback val] end,
+      recover val Array[RawGirAlias val] end,
+      recover val Array[RawGirMethod val] end)
+    let repos = _wrap_namespace(ns)
+    match GirValidator(repos)
+    | let m: GirModel val => m
+    else error
+    end
+
+  fun _make_model_with_filter(): GirModel val ? =>
+    let match_method = RawGirMethod(
+      RawGirMethodKindMethod, "match", "gtk_filter_match",
+      false, "",
+      RawGirReturnValue(RawGirType("gboolean", "gboolean"), "none", false, ""),
+      recover val Array[RawGirParameter val] end)
+    let methods = recover val
+      let arr = Array[RawGirMethod val](1)
+      arr.push(match_method)
+      arr
+    end
+    let filter = RawGirClass(
+      "Filter", "GtkFilter", "", "",
+      recover val Array[String val] end,
+      recover val Array[RawGirMethod val] end,
+      methods,
+      recover val Array[RawGirProperty val] end,
+      recover val Array[RawGirSignal val] end)
+    let classes = recover val
+      let arr = Array[RawGirClass val](1)
+      arr.push(filter)
       arr
     end
     let ns = RawGirNamespace(
@@ -220,6 +268,20 @@ class iso _TestResolvedModernMethodRef is UnitTest
       _Fixtures.gtk_model_ctx()?)
     h.assert_eq[String](
       "call [Gtk.Widget.show](gtk-Widget.md#show) to display", r.body)
+
+
+class iso _TestResolvedModernMethodRefMungesReservedWord is UnitTest
+  fun name(): String =>
+    "doc_translate/[method@Gtk.Filter.match] anchor uses match'"
+
+  fun apply(h: TestHelper) ? =>
+    let r = DocTranslate("call [method@Gtk.Filter.match]",
+      _Fixtures.gtk_model_ctx_with_filter()?)
+    // The visible label AND the URL anchor should carry the munged
+    // name so the link target matches what the emitter writes as
+    // the Pony method name.
+    h.assert_eq[String](
+      "call [Gtk.Filter.match'](gtk-Filter.md#match')", r.body)
 
 
 class iso _TestFencedCodeBlockPassesThrough is UnitTest
