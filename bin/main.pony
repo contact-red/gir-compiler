@@ -193,7 +193,7 @@ primitive _Pipeline
 
     // ---- Emit ----
     let target = FilePath(auth, args.target_dir)
-    match Emitter(plan, model, target)
+    match Emitter(plan, model, target, true)
     | let r: EmitOutcome val =>
       env.out.print("emitted " + r.packages_written.string()
         + " package(s), " + r.files_written.string() + " file(s), "
