@@ -13,6 +13,7 @@ class val RawGirInterface
   """
   let name: String val
   let c_type: String val
+  let doc: String val
   let prerequisites: Array[String val] val
   let constructors: Array[RawGirMethod val] val
   let methods: Array[RawGirMethod val] val
@@ -22,6 +23,7 @@ class val RawGirInterface
   new val create(
     name': String val,
     c_type': String val,
+    doc': String val,
     prerequisites': Array[String val] val,
     constructors': Array[RawGirMethod val] val,
     methods': Array[RawGirMethod val] val,
@@ -30,6 +32,7 @@ class val RawGirInterface
   =>
     name = name'
     c_type = c_type'
+    doc = doc'
     prerequisites = prerequisites'
     constructors = constructors'
     methods = methods'
@@ -50,6 +53,7 @@ class val RawGirRecord
   let c_type: String val
   let disguised: Bool
   let opaque: Bool
+  let doc: String val
   let constructors: Array[RawGirMethod val] val
   let methods: Array[RawGirMethod val] val
 
@@ -58,6 +62,7 @@ class val RawGirRecord
     c_type': String val,
     disguised': Bool,
     opaque': Bool,
+    doc': String val,
     constructors': Array[RawGirMethod val] val,
     methods': Array[RawGirMethod val] val)
   =>
@@ -65,6 +70,7 @@ class val RawGirRecord
     c_type = c_type'
     disguised = disguised'
     opaque = opaque'
+    doc = doc'
     constructors = constructors'
     methods = methods'
 
@@ -79,15 +85,18 @@ class val RawGirEnumeration
   """
   let name: String val
   let c_type: String val
+  let doc: String val
   let members: Array[RawGirMember val] val
 
   new val create(
     name': String val,
     c_type': String val,
+    doc': String val,
     members': Array[RawGirMember val] val)
   =>
     name = name'
     c_type = c_type'
+    doc = doc'
     members = members'
 
 
@@ -99,15 +108,18 @@ class val RawGirBitfield
   """
   let name: String val
   let c_type: String val
+  let doc: String val
   let members: Array[RawGirMember val] val
 
   new val create(
     name': String val,
     c_type': String val,
+    doc': String val,
     members': Array[RawGirMember val] val)
   =>
     name = name'
     c_type = c_type'
+    doc = doc'
     members = members'
 
 
@@ -115,22 +127,26 @@ class val RawGirMember
   """
   A <member> child of an <enumeration> or <bitfield>. Has a GIR
   name (e.g., "horizontal"), a C-side identifier (e.g.,
-  "GTK_ORIENTATION_HORIZONTAL"), and a string value. Value is a
-  string because GIR encodes integer literals as decimal text;
-  the validator will parse them to an integer type.
+  "GTK_ORIENTATION_HORIZONTAL"), a string value, and the verbatim
+  text of any <doc> child. Value is a string because GIR encodes
+  integer literals as decimal text; the validator will parse them
+  to an integer type.
   """
   let name: String val
   let value: String val
   let c_identifier: String val
+  let doc: String val
 
   new val create(
     name': String val,
     value': String val,
-    c_identifier': String val)
+    c_identifier': String val,
+    doc': String val)
   =>
     name = name'
     value = value'
     c_identifier = c_identifier'
+    doc = doc'
 
 
 class val RawGirCallback
@@ -143,6 +159,7 @@ class val RawGirCallback
   let name: String val
   let c_type: String val
   let throws: Bool
+  let doc: String val
   let return_value: RawGirReturnValue val
   let parameters: Array[RawGirParameter val] val
 
@@ -150,12 +167,14 @@ class val RawGirCallback
     name': String val,
     c_type': String val,
     throws': Bool,
+    doc': String val,
     return_value': RawGirReturnValue val,
     parameters': Array[RawGirParameter val] val)
   =>
     name = name'
     c_type = c_type'
     throws = throws'
+    doc = doc'
     return_value = return_value'
     parameters = parameters'
 
@@ -169,15 +188,18 @@ class val RawGirAlias
   """
   let name: String val
   let c_type: String val
+  let doc: String val
   let target: RawGirType val
 
   new val create(
     name': String val,
     c_type': String val,
+    doc': String val,
     target': RawGirType val)
   =>
     name = name'
     c_type = c_type'
+    doc = doc'
     target = target'
 
 
@@ -195,6 +217,7 @@ class val RawGirProperty
   let construct: Bool
   let construct_only: Bool
   let transfer_ownership: String val
+  let doc: String val
 
   new val create(
     name': String val,
@@ -203,7 +226,8 @@ class val RawGirProperty
     writable': Bool,
     construct': Bool,
     construct_only': Bool,
-    transfer_ownership': String val)
+    transfer_ownership': String val,
+    doc': String val)
   =>
     name = name'
     typ = typ'
@@ -212,6 +236,7 @@ class val RawGirProperty
     construct = construct'
     construct_only = construct_only'
     transfer_ownership = transfer_ownership'
+    doc = doc'
 
 
 class val RawGirSignal
@@ -222,14 +247,17 @@ class val RawGirSignal
   first runtime argument; GIR omits it from <parameters>).
   """
   let name: String val
+  let doc: String val
   let return_value: RawGirReturnValue val
   let parameters: Array[RawGirParameter val] val
 
   new val create(
     name': String val,
+    doc': String val,
     return_value': RawGirReturnValue val,
     parameters': Array[RawGirParameter val] val)
   =>
     name = name'
+    doc = doc'
     return_value = return_value'
     parameters = parameters'

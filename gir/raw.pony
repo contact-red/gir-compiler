@@ -31,11 +31,15 @@ class val RawGirRepository
 class val RawGirNamespace
   """
   A GIR <namespace> element. Carries the namespace name (e.g. "Gtk"),
-  its version (e.g. "4.0"), and the types declared inside it.
+  its version (e.g. "4.0"), and the types declared inside it. `doc`
+  carries the verbatim text of the <doc> child if present (empty
+  string otherwise) — translated downstream by the `doc_translate`
+  package.
   """
   let name: String val
   let version: String val
   let c_identifier_prefixes: String val
+  let doc: String val
   let classes: Array[RawGirClass val] val
   let interfaces: Array[RawGirInterface val] val
   let records: Array[RawGirRecord val] val
@@ -49,6 +53,7 @@ class val RawGirNamespace
     name': String val,
     version': String val,
     c_identifier_prefixes': String val,
+    doc': String val,
     classes': Array[RawGirClass val] val,
     interfaces': Array[RawGirInterface val] val,
     records': Array[RawGirRecord val] val,
@@ -61,6 +66,7 @@ class val RawGirNamespace
     name = name'
     version = version'
     c_identifier_prefixes = c_identifier_prefixes'
+    doc = doc'
     classes = classes'
     interfaces = interfaces'
     records = records'
@@ -83,6 +89,7 @@ class val RawGirClass
   let name: String val
   let c_type: String val
   let parent: String val           // empty string if no parent
+  let doc: String val
   let implements: Array[String val] val
   let constructors: Array[RawGirMethod val] val
   let methods: Array[RawGirMethod val] val
@@ -93,6 +100,7 @@ class val RawGirClass
     name': String val,
     c_type': String val,
     parent': String val,
+    doc': String val,
     implements': Array[String val] val,
     constructors': Array[RawGirMethod val] val,
     methods': Array[RawGirMethod val] val,
@@ -102,6 +110,7 @@ class val RawGirClass
     name = name'
     c_type = c_type'
     parent = parent'
+    doc = doc'
     implements = implements'
     constructors = constructors'
     methods = methods'
@@ -121,6 +130,7 @@ class val RawGirMethod
   let name: String val
   let c_identifier: String val
   let throws: Bool
+  let doc: String val
   let return_value: RawGirReturnValue val
   let parameters: Array[RawGirParameter val] val
 
@@ -129,6 +139,7 @@ class val RawGirMethod
     name': String val,
     c_identifier': String val,
     throws': Bool,
+    doc': String val,
     return_value': RawGirReturnValue val,
     parameters': Array[RawGirParameter val] val)
   =>
@@ -136,6 +147,7 @@ class val RawGirMethod
     name = name'
     c_identifier = c_identifier'
     throws = throws'
+    doc = doc'
     return_value = return_value'
     parameters = parameters'
 
@@ -158,38 +170,44 @@ class val RawGirReturnValue
   let typ: RawGirType val
   let transfer_ownership: String val
   let nullable: Bool
+  let doc: String val
 
   new val create(
     typ': RawGirType val,
     transfer_ownership': String val,
-    nullable': Bool)
+    nullable': Bool,
+    doc': String val)
   =>
     typ = typ'
     transfer_ownership = transfer_ownership'
     nullable = nullable'
+    doc = doc'
 
 
 class val RawGirParameter
   """
   A <parameter> element inside <parameters>. Carries the parameter
-  name, its type, ownership-transfer information, and the nullable
-  annotation.
+  name, its type, ownership-transfer information, the nullable
+  annotation, and the verbatim text of any <doc> child.
   """
   let name: String val
   let typ: RawGirType val
   let transfer_ownership: String val
   let nullable: Bool
+  let doc: String val
 
   new val create(
     name': String val,
     typ': RawGirType val,
     transfer_ownership': String val,
-    nullable': Bool)
+    nullable': Bool,
+    doc': String val)
   =>
     name = name'
     typ = typ'
     transfer_ownership = transfer_ownership'
     nullable = nullable'
+    doc = doc'
 
 
 class val RawGirType
