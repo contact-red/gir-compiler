@@ -47,7 +47,9 @@ primitive GirValidator
           end
           let node = GirNodeClass(ns_name, cls)
           by_qname(qcls) = node
-          if cls.c_type.size() > 0 then by_c_type(cls.c_type) = node end
+          if (cls.c_type.size() > 0) and not by_c_type.contains(cls.c_type) then
+            by_c_type(cls.c_type) = node
+          end
         end
 
         for iface in ns.interfaces.values() do
@@ -57,7 +59,9 @@ primitive GirValidator
           end
           let node = GirNodeInterface(ns_name, iface)
           by_qname(qif) = node
-          if iface.c_type.size() > 0 then by_c_type(iface.c_type) = node end
+          if (iface.c_type.size() > 0) and not by_c_type.contains(iface.c_type) then
+            by_c_type(iface.c_type) = node
+          end
         end
 
         for rec in ns.records.values() do
@@ -67,7 +71,9 @@ primitive GirValidator
           end
           let node = GirNodeRecord(ns_name, rec)
           by_qname(qrec) = node
-          if rec.c_type.size() > 0 then by_c_type(rec.c_type) = node end
+          if (rec.c_type.size() > 0) and not by_c_type.contains(rec.c_type) then
+            by_c_type(rec.c_type) = node
+          end
         end
 
         for enumeration in ns.enumerations.values() do
@@ -77,7 +83,9 @@ primitive GirValidator
           end
           let node = GirNodeEnumeration(ns_name, enumeration)
           by_qname(qenum) = node
-          if enumeration.c_type.size() > 0 then
+          if (enumeration.c_type.size() > 0)
+            and not by_c_type.contains(enumeration.c_type)
+          then
             by_c_type(enumeration.c_type) = node
           end
         end
@@ -89,7 +97,9 @@ primitive GirValidator
           end
           let node = GirNodeBitfield(ns_name, bf)
           by_qname(qbf) = node
-          if bf.c_type.size() > 0 then by_c_type(bf.c_type) = node end
+          if (bf.c_type.size() > 0) and not by_c_type.contains(bf.c_type) then
+            by_c_type(bf.c_type) = node
+          end
         end
 
         for cb in ns.callbacks.values() do
@@ -99,7 +109,9 @@ primitive GirValidator
           end
           let node = GirNodeCallback(ns_name, cb)
           by_qname(qcb) = node
-          if cb.c_type.size() > 0 then by_c_type(cb.c_type) = node end
+          if (cb.c_type.size() > 0) and not by_c_type.contains(cb.c_type) then
+            by_c_type(cb.c_type) = node
+          end
         end
 
         for al in ns.aliases.values() do
@@ -109,7 +121,9 @@ primitive GirValidator
           end
           let node = GirNodeAlias(ns_name, al)
           by_qname(qal) = node
-          if al.c_type.size() > 0 then by_c_type(al.c_type) = node end
+          if (al.c_type.size() > 0) and not by_c_type.contains(al.c_type) then
+            by_c_type(al.c_type) = node
+          end
         end
       end
     end

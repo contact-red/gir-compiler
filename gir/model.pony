@@ -109,9 +109,14 @@ class val GirModel
   every named GIR type from every repository under its qualified name
   ("Gtk.Application", "Gio.File"). `by_c_type` provides reverse lookup
   by the GIR-declared C type name ("GtkApplication", "GFile") — used
-  by the doc translator to resolve legacy gtk-doc `#CType` references.
-  `namespaces` provides per-namespace lookup for "give me everything
-  in Gtk".
+  by the doc translator to resolve legacy gtk-doc `#CType` references
+  and by the emitter to detect duplicate type declarations across
+  namespaces. When two GIR namespaces both declare the same c:type
+  (e.g. GIOCondition appears in both GLib and GObject), the first
+  one encountered wins the `by_c_type` slot; later declarations are
+  detectable as duplicates by comparing their qname against
+  by_c_type's stored qname for the same c_type. `namespaces`
+  provides per-namespace lookup for "give me everything in Gtk".
   """
   let repositories: Array[RawGirRepository val] val
   let by_qname: Map[String val, GirNodeRef] val

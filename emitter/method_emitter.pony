@@ -252,15 +252,20 @@ primitive MethodEmitter
       | let qname: String val =>
         match model.resolve(qname)
         | let b: GirNodeBitfield =>
-          PtBitfield(qname, TypeNaming.pony_name_for_node(b, qname))
+          let canon = _canonical_qname(b.target.c_type, qname, model)
+          PtBitfield(canon, TypeNaming.pony_name_for_node(b, canon))
         | let e: GirNodeEnumeration =>
-          PtEnum(qname, TypeNaming.pony_name_for_node(e, qname))
+          let canon = _canonical_qname(e.target.c_type, qname, model)
+          PtEnum(canon, TypeNaming.pony_name_for_node(e, canon))
         | let c: GirNodeClass =>
-          PtGObject(qname, TypeNaming.pony_name_for_node(c, qname))
+          let canon = _canonical_qname(c.target.c_type, qname, model)
+          PtGObject(canon, TypeNaming.pony_name_for_node(c, canon))
         | let i: GirNodeInterface =>
-          PtGObject(qname, TypeNaming.pony_name_for_node(i, qname))
+          let canon = _canonical_qname(i.target.c_type, qname, model)
+          PtGObject(canon, TypeNaming.pony_name_for_node(i, canon))
         | let r: GirNodeRecord =>
-          PtGObject(qname, TypeNaming.pony_name_for_node(r, qname))
+          let canon = _canonical_qname(r.target.c_type, qname, model)
+          PtGObject(canon, TypeNaming.pony_name_for_node(r, canon))
         else
           // Includes None (type lives in an unloaded namespace) and
           // callback / alias kinds we don't yet have a v1 type
@@ -273,6 +278,27 @@ primitive MethodEmitter
       else
         UnemittableUnknownType(location, gir_name)
       end
+    end
+
+
+  fun _canonical_qname(
+    c_type: String val,
+    fallback: String val,
+    model: GirModel val)
+    : String val
+  =>
+    """
+    If the resolved node's c:type is also declared in another loaded
+    namespace, route to the canonical (first-registered) declaration
+    via the model's by_c_type index. Otherwise return the literal
+    qname we already resolved. Without this, two declarations of the
+    same c:type produce two PonyType instances pointing at two
+    different packages, and the emitter would import the wrong one.
+    """
+    if c_type.size() == 0 then return fallback end
+    match model.resolve_by_c_type(c_type)
+    | let n: GirNodeRef => NodeHelpers.qname_of(n)
+    | None => fallback
     end
 
 
