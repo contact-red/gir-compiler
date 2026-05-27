@@ -51,13 +51,13 @@ primitive UrlBuilder
   =>
     """
     Method-anchor URL into the type's page. The member name is
-    routed through `PonyIdent.safe` so reserved-word collisions
-    (`match`, `error`, `ref`, …) get the same prime-suffix munge
+    routed through `PonyIdent.safe_method` so reserved-word
+    collisions (`match`, `error`, `ref`, …) get the same `g` prefix
     the emitter applies to the Pony method name itself. Without
     this, the link's anchor wouldn't match the method's actual
     Pony identifier and the cross-reference would dangle.
     """
-    let pony_member: String val = PonyIdent.safe(member_name)
+    let pony_member: String val = PonyIdent.safe_method(member_name)
     "[" + namespace + "." + type_name + "." + pony_member + "]("
       + type_page(namespace, type_name) + "#" + pony_member + ")"
 

@@ -72,11 +72,12 @@ primitive TypeNaming
 
   fun safe_param_name(gir_name: String): String val =>
     """
-    Pony-legal parameter name. Delegates to PonyIdent.safe so the
-    munge stays in lockstep with method-name munging and doc-URL
-    anchor generation.
+    Pony-legal parameter name. Delegates to PonyIdent.safe_param.
+    Reserved-word collisions get the prime suffix ("error" ->
+    "error'"); primes are legal on parameter and variable bindings
+    but NOT on method names (see PonyIdent.safe_method for those).
     """
-    PonyIdent.safe(gir_name)
+    PonyIdent.safe_param(gir_name)
 
 
   fun _primitive_mapping(gir_name: String): (String val | None) =>

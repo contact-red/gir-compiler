@@ -60,15 +60,15 @@ primitive MethodEmitter
     the skip stub so docs-mode generation can still show users what
     the missing method does.
 
-    The method name is routed through PonyIdent.safe before reaching
-    SkippedSpec — without this, skip stubs for reserved-word method
-    names (e.g. `fun ref error()`) emit invalid Pony source, same
-    way MethodSpec names had to be munged.
+    The method name is routed through PonyIdent.safe_method before
+    reaching SkippedSpec — without this, skip stubs for reserved-
+    word method names (e.g. `fun ref error()`) emit invalid Pony
+    source, same way MethodSpec names had to be munged.
     """
     match outcome
     | let s: MethodSpec val => s
     | let r: UnemittableReason =>
-      SkippedSpec(PonyIdent.safe(method_name), receiver_qname, r, doc)
+      SkippedSpec(PonyIdent.safe_method(method_name), receiver_qname, r, doc)
     end
 
 
@@ -140,7 +140,7 @@ primitive MethodEmitter
       end
 
     MethodSpec(
-      PonyIdent.safe(pony_name),
+      PonyIdent.safe_method(pony_name),
       m.c_identifier,
       LibraryFor(owner_ns),
       receiver_qname,

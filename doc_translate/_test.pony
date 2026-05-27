@@ -272,16 +272,18 @@ class iso _TestResolvedModernMethodRef is UnitTest
 
 class iso _TestResolvedModernMethodRefMungesReservedWord is UnitTest
   fun name(): String =>
-    "doc_translate/[method@Gtk.Filter.match] anchor uses match'"
+    "doc_translate/[method@Gtk.Filter.match] anchor uses gmatch"
 
   fun apply(h: TestHelper) ? =>
     let r = DocTranslate("call [method@Gtk.Filter.match]",
       _Fixtures.gtk_model_ctx_with_filter()?)
-    // The visible label AND the URL anchor should carry the munged
-    // name so the link target matches what the emitter writes as
-    // the Pony method name.
+    // The visible label AND the URL anchor should carry the
+    // method-safe munge (PonyIdent.safe_method) so the link target
+    // matches what the emitter writes as the Pony method name.
+    // Reserved-word methods get a `g` prefix — primes are illegal
+    // in Pony method names.
     h.assert_eq[String](
-      "call [Gtk.Filter.match'](gtk-Filter.md#match')", r.body)
+      "call [Gtk.Filter.gmatch](gtk-Filter.md#gmatch)", r.body)
 
 
 class iso _TestFencedCodeBlockPassesThrough is UnitTest
