@@ -13,7 +13,7 @@ primitive EmbeddedResources
     recover val
       [
         ("gobject_runtime/handle.pony", _gobject_runtime_handle())
-        ("gtk/runtime.pony", _gtk_runtime())
+        ("gtk/runtime.pony",            _gtk_runtime())
       ]
     end
 

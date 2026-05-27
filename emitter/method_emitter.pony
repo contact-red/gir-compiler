@@ -261,15 +261,13 @@ primitive MethodEmitter
           PtGObject(qname, TypeNaming.pony_name_for_node(i, qname))
         | let r: GirNodeRecord =>
           PtGObject(qname, TypeNaming.pony_name_for_node(r, qname))
-        | None =>
-          // Not in the model — could be a type from an unloaded
-          // namespace; treat as opaque GObject pointer with the
-          // namespace-prepended fallback name.
-          PtGObject(qname, TypeNaming.pony_type_name("", qname))
         else
-          // Callbacks and aliases — don't yet have a v1 type
-          // spelling. Surface as a skip rather than emit broken
-          // source.
+          // Includes None (type lives in an unloaded namespace) and
+          // callback / alias kinds we don't yet have a v1 type
+          // spelling for. Either way, the method that uses this type
+          // can't be represented — skip it entirely rather than emit
+          // broken source or a use directive for a non-existent
+          // package.
           UnemittableUnknownType(location, gir_name)
         end
       else
@@ -457,10 +455,7 @@ primitive MethodEmitter
     Methods that classified as a SkippedSpec emit nothing at all.
     If a GIR signature can't be represented in Pony, the binding
     simply doesn't expose it — no compile_error stub, no
-    placeholder, no doc entry. Users get the normal `method not
-    found` from ponyc when they try to call something that isn't
-    there, which is fine since the method genuinely doesn't exist
-    in the Pony API surface.
+    placeholder, no doc entry.
     """
     match outcome
     | let spec: MethodSpec val =>
