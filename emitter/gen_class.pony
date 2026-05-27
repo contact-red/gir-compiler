@@ -68,19 +68,6 @@ primitive GenClass
     let pony_name: String val = TypeNaming.pony_type_name(node.target.c_type, qname)
     let receiver_ns: String val = node.namespace
 
-    // -- Classify constructors and methods upfront so we can
-    //    collect FFI declarations and library directives.
-    let outcomes: Array[MethodOutcome] = Array[MethodOutcome]
-    let libraries: Set[String val] = Set[String val]
-
-    if not SuppressedConstruction(qname) then
-      for ctor in node.target.constructors.values() do
-        outcomes.push(
-          MethodEmitter.classify_constructor(
-            qname, receiver_ns, ctor, model))
-      end
-    end
-
     // Sort method calls by (receiver_qname, method_name) so emit
     // order is reproducible across runs. The plan's HashSet has
     // non-deterministic iteration order.
@@ -91,9 +78,50 @@ primitive GenClass
       end
     end
     Sort[Array[MethodCallRef], MethodCallRef](sorted_calls)
+
+    // First pass: figure out the Pony name every constructor and
+    // method will land on so the classifier can disambiguate
+    // parameter names that would otherwise shadow them. Also include
+    // the names of the synthetic fields and methods that gen_class
+    // itself emits (_h, _runtime, _wrap, _handle, _runtime_ref) so
+    // params don't clash with those either.
+    let class_member_names: Set[String val] iso = recover iso
+      let s = Set[String val]
+      s.set("_h")
+      s.set("_runtime")
+      s.set("_wrap")
+      s.set("_handle")
+      s.set("_runtime_ref")
+      s
+    end
+    if not SuppressedConstruction(qname) then
+      for ctor in node.target.constructors.values() do
+        class_member_names.set(
+          PonyIdent.safe_method(MethodEmitter.constructor_pony_name(ctor.name)))
+      end
+    end
+    for call in sorted_calls.values() do
+      class_member_names.set(PonyIdent.safe_method(call.method_name))
+    end
+    let member_names: Set[String val] val = consume class_member_names
+
+    // -- Classify constructors and methods upfront so we can
+    //    collect FFI declarations and library directives.
+    let outcomes: Array[MethodOutcome] = Array[MethodOutcome]
+    let libraries: Set[String val] = Set[String val]
+
+    if not SuppressedConstruction(qname) then
+      for ctor in node.target.constructors.values() do
+        outcomes.push(
+          MethodEmitter.classify_constructor(
+            qname, receiver_ns, ctor, model, member_names))
+      end
+    end
+
     for call in sorted_calls.values() do
       outcomes.push(
-        MethodEmitter.classify_method(qname, call.method_name, model))
+        MethodEmitter.classify_method(
+          qname, call.method_name, model, member_names))
     end
 
     for o_lib in outcomes.values() do

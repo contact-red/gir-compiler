@@ -15,6 +15,7 @@
 //       MethodOutcome
 //     called once per constructor on every type in T
 
+use "collections"
 use "../doc_translate"
 use "../gir"
 
@@ -23,13 +24,19 @@ primitive MethodEmitter
   fun classify_method(
     receiver_qname: String val,
     method_name: String val,
-    model: GirModel val)
+    model: GirModel val,
+    class_member_names: (Set[String val] val | None) = None)
     : MethodOutcome
   =>
     """
     Find the method in the receiver type's ancestry; classify its
     shape. Falls through to `_classify_signal` if a connect_X method
     name doesn't match any real method.
+
+    `class_member_names` is the set of all method / field names that
+    will appear at the same level in the generated class. Parameter
+    names that would shadow any of those get a prime suffix to
+    avoid Pony's `can't reuse name 'X'` rejection.
     """
     match _find_in_ancestry(receiver_qname, method_name, model)
     | (let m: RawGirMethod val,
@@ -37,7 +44,7 @@ primitive MethodEmitter
         let owner_ns: String val) =>
       _wrap_skip(receiver_qname, method_name, m.doc,
         _classify_raw(m, receiver_qname, owner_qname, owner_ns,
-          method_name, model))
+          method_name, model, class_member_names))
     else
       // Not a method — maybe a connect_X for a signal.
       _wrap_skip(receiver_qname, method_name, "",
@@ -76,7 +83,8 @@ primitive MethodEmitter
     receiver_qname: String val,
     receiver_ns: String val,
     raw_ctor: RawGirMethod val,
-    model: GirModel val)
+    model: GirModel val,
+    class_member_names: (Set[String val] val | None) = None)
     : MethodOutcome
   =>
     """
@@ -85,15 +93,45 @@ primitive MethodEmitter
     we sink immediately via GObjectHandle.adopt_floating). Records
     and types not descending from GInitiallyUnowned are
     UnemittableUnsupportedShape until follow-up work.
+
+    The Pony constructor name is derived from the GIR `name`
+    attribute — see `constructor_pony_name`.
     """
-    _wrap_skip(receiver_qname, "create", raw_ctor.doc,
+    let pony_name = constructor_pony_name(raw_ctor.name)
+    _wrap_skip(receiver_qname, pony_name, raw_ctor.doc,
       _classify_raw(
         raw_ctor,
         receiver_qname,
         receiver_qname,
         receiver_ns,
-        "create",
-        model))
+        pony_name,
+        model,
+        class_member_names))
+
+
+  fun constructor_pony_name(raw_name: String): String val =>
+    """
+    Map a GIR constructor name onto its Pony slot:
+
+      "new"             -> "create"  (the conventional Pony default)
+      "new_with_label"  -> "with_label"  (strip the `new_` prefix)
+      "new_from_file"   -> "from_file"
+      "newv"            -> "newv"  (no underscore, used verbatim)
+
+    This gives GIR classes that declare multiple constructors
+    (gtk_button_new + gtk_button_new_with_label +
+    gtk_button_new_with_mnemonic) distinct Pony constructor slots.
+    Without it they all collapse onto `create` and the second
+    emission fails with `can't reuse name 'create'`.
+
+    Public so gen_class can compute the same names up front when
+    building the class-member-names set for parameter disambiguation.
+    """
+    if raw_name == "new" then return "create" end
+    if (raw_name.size() > 4) and raw_name.at("new_", 0) then
+      return raw_name.substring(4)
+    end
+    raw_name.string()
 
 
   // ---- Classification helpers ----
@@ -104,19 +142,32 @@ primitive MethodEmitter
     owner_qname: String val,
     owner_ns: String val,
     pony_name: String val,
-    model: GirModel val)
+    model: GirModel val,
+    class_member_names: (Set[String val] val | None) = None)
     : (MethodSpec val | UnemittableReason)
   =>
+    """
+    Build a MethodSpec from a raw GIR method. The
+    `class_member_names` set (when supplied by gen_class) carries the
+    names of every method and field that will live at the same scope
+    in the generated class. Any parameter name that matches one of
+    those gets a prime suffix so we don't emit `can't reuse name 'X'`
+    — Pony rejects parameter names that shadow class-member names.
+    """
+    let safe_method_name = PonyIdent.safe_method(pony_name)
     // Build params + return; bail early on any unrepresentable type.
     let params = recover iso Array[ParamSpec val] end
     for p in m.parameters.values() do
       let loc: String val = "parameter `" + p.name + "`"
       match _pony_type_for(p.typ.name, owner_ns, loc, model)
       | let t: PonyType =>
-        params.push(ParamSpec(
-          TypeNaming.safe_param_name(p.name),
-          t,
-          p.typ.name))
+        let safe_param = TypeNaming.safe_param_name(p.name)
+        let final_param =
+          if _name_clashes(safe_param, safe_method_name, class_member_names)
+          then safe_param + "'"
+          else safe_param
+          end
+        params.push(ParamSpec(final_param, t, p.typ.name))
       | let u: UnemittableReason => return u
       end
     end
@@ -140,7 +191,7 @@ primitive MethodEmitter
       end
 
     MethodSpec(
-      PonyIdent.safe_method(pony_name),
+      safe_method_name,
       m.c_identifier,
       LibraryFor(owner_ns),
       receiver_qname,
@@ -402,6 +453,15 @@ primitive MethodEmitter
     translate_ctx: (TranslateContext val | None) = None)
     : String val
   =>
+    """
+    Methods that classified as a SkippedSpec emit nothing at all.
+    If a GIR signature can't be represented in Pony, the binding
+    simply doesn't expose it — no compile_error stub, no
+    placeholder, no doc entry. Users get the normal `method not
+    found` from ponyc when they try to call something that isn't
+    there, which is fine since the method genuinely doesn't exist
+    in the Pony API surface.
+    """
     match outcome
     | let spec: MethodSpec val =>
       match spec.shape
@@ -410,7 +470,7 @@ primitive MethodEmitter
       | ShapeConstructorFloating => _emit_constructor_floating(spec, translate_ctx)
       | ShapeSignalConnect       => _emit_signal_connect(spec, translate_ctx)
       end
-    | let s: SkippedSpec val => _emit_skip_stub(s, translate_ctx)
+    | let _: SkippedSpec val => ""
     end
 
 
@@ -502,7 +562,9 @@ primitive MethodEmitter
     : String val
   =>
     let buf = recover iso String end
-    buf.append("\n  new create(")
+    buf.append("\n  new ")
+    buf.append(spec.pony_name)
+    buf.append("(")
     buf.append(_pony_params_str(spec.parameters))
     buf.append(") =>\n")
     buf.append(DocstringWriter(spec.doc, translate_ctx, "    "))
@@ -549,53 +611,21 @@ primitive MethodEmitter
     consume buf
 
 
-  fun _emit_skip_stub(
-    s: SkippedSpec val,
-    translate_ctx: (TranslateContext val | None))
-    : String val
+  fun _name_clashes(
+    candidate: String val,
+    self_name: String val,
+    class_member_names: (Set[String val] val | None))
+    : Bool
   =>
     """
-    Emit a method declaration that fails at the call site with a
-    useful compile_error message. The body sits inside `ifdef linux
-    or windows or osx` so Pony's tree-shaker elides it unless the
-    method is actually called (verified empirically — uncalled
-    methods don't trigger their compile_error). Wrong-arity calls
-    will get the ordinary `wrong number of arguments` error from
-    ponyc.
-
-    The docstring is emitted before the ifdef so it survives both
-    docs-mode rendering (visible to readers on the docs site) and
-    compile-mode tree-shaking (the doc is a string literal Pony
-    keeps as method documentation).
+    True if `candidate` would shadow the enclosing method (`self_name`)
+    or any other class-level member. Used to decide whether a
+    parameter name needs the prime suffix.
     """
-    let buf = recover iso String end
-    buf.append("\n  fun ref ")
-    buf.append(s.method_name)
-    buf.append("() =>\n")
-    buf.append(DocstringWriter(s.doc, translate_ctx, "    "))
-    buf.append("    ifdef linux or windows or osx then\n")
-    buf.append("      compile_error \"")
-    buf.append(s.receiver_qname)
-    buf.append(".")
-    buf.append(s.method_name)
-    buf.append(": ")
-    buf.append(_describe(s.reason))
-    buf.append("\"\n")
-    buf.append("    end\n")
-    consume buf
-
-
-  fun _describe(u: UnemittableReason): String val =>
-    match u
-    | let _: UnemittableVariadic => "variadic"
-    | let _: UnemittableUnintrospectable => "introspectable=0"
-    | let _: UnemittableOutParamUnsupported => "out parameter not yet supported"
-    | let x: UnemittableUnknownType val =>
-      "unknown GIR type `" + x.gir_name + "` (" + x.location + ")"
-    | let x: UnemittableUnsupportedShape val =>
-      "unsupported shape: " + x.detail
-    | let x: UnemittableNotFound val =>
-      "no method `" + x.method_name + "` found in ancestry"
+    if candidate == self_name then return true end
+    match class_member_names
+    | let s: Set[String val] val => s.contains(candidate)
+    | None => false
     end
 
 
