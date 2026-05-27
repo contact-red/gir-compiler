@@ -176,6 +176,7 @@ primitive MethodEmitter
     | "gsize" => PtUSize
     | "gssize" => PtISize
     | "utf8" => PtUtf8
+    | "varargs" => UnemittableVariadic
     else
       // Object reference — resolve via the model to distinguish
       // bitfields (PtBitfield) from object types (PtGObject).
