@@ -160,6 +160,15 @@ primitive MethodEmitter
     kinds as UnemittableUnknownType (no PtEnum yet — adds in a
     follow-up).
     """
+    // GIR array sentinel — emitted by the loader as "array<inner>"
+    // when GIR wraps a <type> in <array>. We don't have a v1 array
+    // shape yet (the FFI marshalling is non-trivial), so any method
+    // with an array parameter or return type skips. The detail
+    // message keeps the inner type visible for triage.
+    if gir_name.at("array<", 0) then
+      return UnemittableUnsupportedShape(
+        gir_name + " not yet supported (" + location + ")")
+    end
     match gir_name
     | "none" => PtNone
     | "gboolean" => PtBool
