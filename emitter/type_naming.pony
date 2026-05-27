@@ -17,12 +17,18 @@
 use "../gir"
 
 primitive TypeNaming
-  fun pony_type_name(qname: String): String val =>
+  fun pony_type_name(c_type: String, qname: String): String val =>
     """
-    "Gtk.Application" -> "GtkApplication". Strips the dot.
-    Returns the qname unchanged if it has no dot (shouldn't happen
-    for validator-built qnames).
+    The Pony spelling for a GIR type. Uses the GIR-declared `c:type`
+    directly when present — so e.g. `Gio.Application` (c:type=GApplication)
+    renders as `GApplication`, not `GioApplication`. This keeps the
+    generated names in lockstep with the actual C API and with what
+    pony-doc shows on the documentation page.
+
+    Falls back to the namespace-prepended form when the GIR didn't
+    declare a c:type (rare, defensive).
     """
+    if c_type.size() > 0 then return c_type end
     try
       let idx = qname.find(".")?
       let ns: String val = qname.substring(0, idx)
@@ -31,6 +37,23 @@ primitive TypeNaming
     else
       qname.string()
     end
+
+  fun pony_name_for_node(node: GirNodeRef, fallback_qname: String): String val =>
+    """
+    Read the c:type off a resolved GIR node and route it through
+    `pony_type_name`. Centralizes the per-kind c_type extraction so
+    callers don't repeat the match arms.
+    """
+    let c_type = match node
+                 | let c: GirNodeClass => c.target.c_type
+                 | let i: GirNodeInterface => i.target.c_type
+                 | let r: GirNodeRecord => r.target.c_type
+                 | let e: GirNodeEnumeration => e.target.c_type
+                 | let b: GirNodeBitfield => b.target.c_type
+                 | let cb: GirNodeCallback => cb.target.c_type
+                 | let a: GirNodeAlias => a.target.c_type
+                 end
+    pony_type_name(c_type, fallback_qname)
 
   fun pony_type_from_namespaced_ref(
     gir_name: String,

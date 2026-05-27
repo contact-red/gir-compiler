@@ -248,7 +248,7 @@ class iso _TestResolvedTypeRefLink is UnitTest
     let r = DocTranslate("see #GtkWidget for the base class",
       _Fixtures.gtk_model_ctx()?)
     h.assert_eq[String](
-      "see [Gtk.Widget](gtk-Widget.md) for the base class", r.body)
+      "see [GtkWidget](gtk-GtkWidget.md) for the base class", r.body)
     h.assert_eq[USize](0, r.diagnostics.size())
 
 
@@ -258,7 +258,7 @@ class iso _TestResolvedModernClassRef is UnitTest
     let r = DocTranslate("uses [class@Gtk.Widget] as the receiver",
       _Fixtures.gtk_model_ctx()?)
     h.assert_eq[String](
-      "uses [Gtk.Widget](gtk-Widget.md) as the receiver", r.body)
+      "uses [GtkWidget](gtk-GtkWidget.md) as the receiver", r.body)
 
 
 class iso _TestResolvedModernMethodRef is UnitTest
@@ -267,7 +267,7 @@ class iso _TestResolvedModernMethodRef is UnitTest
     let r = DocTranslate("call [method@Gtk.Widget.show] to display",
       _Fixtures.gtk_model_ctx()?)
     h.assert_eq[String](
-      "call [Gtk.Widget.show](gtk-Widget.md#show) to display", r.body)
+      "call [GtkWidget.show](gtk-GtkWidget.md#show) to display", r.body)
 
 
 class iso _TestResolvedModernMethodRefMungesReservedWord is UnitTest
@@ -281,9 +281,10 @@ class iso _TestResolvedModernMethodRefMungesReservedWord is UnitTest
     // method-safe munge (PonyIdent.safe_method) so the link target
     // matches what the emitter writes as the Pony method name.
     // Reserved-word methods get a `g` prefix — primes are illegal
-    // in Pony method names.
+    // in Pony method names. The type label uses c:type
+    // (`GtkFilter`), not the namespace-prepended form.
     h.assert_eq[String](
-      "call [Gtk.Filter.gmatch](gtk-Filter.md#gmatch)", r.body)
+      "call [GtkFilter.gmatch](gtk-GtkFilter.md#gmatch)", r.body)
 
 
 class iso _TestFencedCodeBlockPassesThrough is UnitTest

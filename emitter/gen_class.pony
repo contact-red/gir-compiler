@@ -65,7 +65,7 @@ primitive GenClass
     translate_ctx: (TranslateContext val | None) = None)
     : String val
   =>
-    let pony_name: String val = TypeNaming.pony_type_name(qname)
+    let pony_name: String val = TypeNaming.pony_type_name(node.target.c_type, qname)
     let receiver_ns: String val = node.namespace
 
     // -- Classify constructors and methods upfront so we can

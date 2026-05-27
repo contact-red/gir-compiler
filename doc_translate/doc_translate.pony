@@ -26,26 +26,25 @@ use "../gir"
 
 primitive UrlBuilder
   """
-  pony-doc URL conventions. Type pages are `<package>-<TypeName>.md`
-  where the package name is the lowercased namespace; method anchors
-  are `#method_name` on that page.
+  pony-doc URL conventions. Type pages are `<package>-<PonyName>.md`
+  where the package name is the lowercased namespace and PonyName
+  is the actual Pony class name (i.e. the GIR c:type — `GtkWidget`,
+  `GApplication`, not `GioApplication`). This matches the file
+  pony-doc emits when it compiles the package.
 
-  pony-doc's actual output uses the package name (which in our build
-  is the lowercased namespace — Gtk -> gtk). If that convention ever
-  changes for a particular namespace, this is the only place that
-  needs to be updated.
+  If pony-doc's filename convention ever changes for a particular
+  namespace, this is the only place that needs to be updated.
   """
 
-  fun type_page(namespace: NamespaceName, type_name: String): String val =>
-    namespace.lower() + "-" + type_name + ".md"
+  fun type_page(namespace: NamespaceName, c_type: String): String val =>
+    namespace.lower() + "-" + c_type + ".md"
 
-  fun type_link(namespace: NamespaceName, type_name: String): String val =>
-    "[" + namespace + "." + type_name + "]("
-      + type_page(namespace, type_name) + ")"
+  fun type_link(namespace: NamespaceName, c_type: String): String val =>
+    "[" + c_type + "](" + type_page(namespace, c_type) + ")"
 
   fun member_link(
     namespace: NamespaceName,
-    type_name: String,
+    c_type: String,
     member_name: String)
     : String val
   =>
@@ -58,8 +57,8 @@ primitive UrlBuilder
     Pony identifier and the cross-reference would dangle.
     """
     let pony_member: String val = PonyIdent.safe_method(member_name)
-    "[" + namespace + "." + type_name + "." + pony_member + "]("
-      + type_page(namespace, type_name) + "#" + pony_member + ")"
+    "[" + c_type + "." + pony_member + "]("
+      + type_page(namespace, c_type) + "#" + pony_member + ")"
 
 
 primitive DocTranslate
@@ -369,12 +368,13 @@ class _Scanner
   fun ref _emit_type_ref_qname(qname: String val) =>
     """
     `qname` is "NS.Name". Resolve against the model; on hit emit a
-    link, on miss emit `qname` in inline code and diagnose.
+    link using the resolved node's c:type (so the URL points at the
+    file pony-doc actually emits and the label matches the Pony
+    class name). On miss emit `qname` as inline code and diagnose.
     """
     match _ctx.model.resolve(qname)
     | let r: GirNodeRef =>
-      (let ns, let local) = _split_qname(qname)
-      _emit_str(UrlBuilder.type_link(ns, local))
+      _emit_str(UrlBuilder.type_link(_node_namespace(r), _node_c_type(r)))
     | None =>
       _diagnostics.push(UnresolvedTypeRef(qname))
       _output.push('`'); _emit_str(qname); _output.push('`')
@@ -399,9 +399,9 @@ class _Scanner
       let owner_str: String val = consume owner
       let member_str: String val = consume member
       match _ctx.model.resolve(owner_str)
-      | let _: GirNodeRef =>
-        (let ns, let local) = _split_qname(owner_str)
-        _emit_str(UrlBuilder.member_link(ns, local, member_str))
+      | let r: GirNodeRef =>
+        _emit_str(UrlBuilder.member_link(
+          _node_namespace(r), _node_c_type(r), member_str))
       | None =>
         _diagnostics.push(UnresolvedMethodRef(target))
         _output.push('`'); _emit_str(target); _output.push('`')
@@ -445,9 +445,9 @@ class _Scanner
     let owner_str: String val = consume owner
     let member_str: String val = consume member
     match _ctx.model.resolve(owner_str)
-    | let _: GirNodeRef =>
-      (let ns, let local) = _split_qname(owner_str)
-      _emit_str(UrlBuilder.member_link(ns, local, member_str))
+    | let r: GirNodeRef =>
+      _emit_str(UrlBuilder.member_link(
+        _node_namespace(r), _node_c_type(r), member_str))
     | None =>
       _diagnostics.push(UnresolvedMethodRef(target))
       _output.push('`'); _emit_str(target); _output.push('`')
@@ -495,7 +495,7 @@ class _Scanner
     let c_type_str: String val = consume c_type
     match _ctx.model.resolve_by_c_type(c_type_str)
     | let r: GirNodeRef =>
-      _emit_str(UrlBuilder.type_link(_node_namespace(r), _node_local_name(r)))
+      _emit_str(UrlBuilder.type_link(_node_namespace(r), _node_c_type(r)))
     | None =>
       _diagnostics.push(UnresolvedTypeRef(c_type_str))
       _output.push('`'); _emit_str(c_type_str); _output.push('`')
@@ -523,6 +523,25 @@ class _Scanner
     | let n: GirNodeCallback => n.target.name
     | let n: GirNodeAlias => n.target.name
     end
+
+  fun box _node_c_type(r: GirNodeRef): String val =>
+    """
+    Read the GIR c:type off a resolved node. Used for URL building
+    so doc cross-refs match what the emitter writes as the Pony
+    class name (and what pony-doc uses for the page filename).
+    Falls back to the node's local name when c:type is empty —
+    defensive only; v1 GIR files always declare c:type.
+    """
+    let c_type = match r
+                 | let n: GirNodeClass => n.target.c_type
+                 | let n: GirNodeInterface => n.target.c_type
+                 | let n: GirNodeRecord => n.target.c_type
+                 | let n: GirNodeEnumeration => n.target.c_type
+                 | let n: GirNodeBitfield => n.target.c_type
+                 | let n: GirNodeCallback => n.target.c_type
+                 | let n: GirNodeAlias => n.target.c_type
+                 end
+    if c_type.size() > 0 then c_type else _node_local_name(r) end
 
   // --- legacy %CONSTANT refs ---------------------------------------
 

@@ -193,21 +193,28 @@ primitive MethodEmitter
     | "varargs" => UnemittableVariadic
     else
       // Object reference — resolve via the model to distinguish
-      // bitfields (PtBitfield) from object types (PtGObject).
-      match _resolve_object_type(gir_name, owner_ns)
-      | (let qname: String val, let pony_ty: String val) =>
+      // bitfields (PtBitfield) from object types (PtGObject). The
+      // pony-side type name comes from the resolved node's c:type
+      // (e.g. `GApplication`, not `GioApplication`) via
+      // TypeNaming.pony_name_for_node.
+      match _resolve_object_qname(gir_name, owner_ns)
+      | let qname: String val =>
         match model.resolve(qname)
-        | let _: GirNodeBitfield => PtBitfield(qname, pony_ty)
-        | let _: GirNodeEnumeration => PtEnum(qname, pony_ty)
-        | let _: GirNodeClass => PtGObject(qname, pony_ty)
-        | let _: GirNodeInterface => PtGObject(qname, pony_ty)
-        | let _: GirNodeRecord => PtGObject(qname, pony_ty)
+        | let b: GirNodeBitfield =>
+          PtBitfield(qname, TypeNaming.pony_name_for_node(b, qname))
+        | let e: GirNodeEnumeration =>
+          PtEnum(qname, TypeNaming.pony_name_for_node(e, qname))
+        | let c: GirNodeClass =>
+          PtGObject(qname, TypeNaming.pony_name_for_node(c, qname))
+        | let i: GirNodeInterface =>
+          PtGObject(qname, TypeNaming.pony_name_for_node(i, qname))
+        | let r: GirNodeRecord =>
+          PtGObject(qname, TypeNaming.pony_name_for_node(r, qname))
         | None =>
           // Not in the model — could be a type from an unloaded
-          // namespace; treat as opaque GObject pointer so the FFI
-          // still works (caller will see a generated marker type
-          // they can interact with via raw pointer if needed).
-          PtGObject(qname, pony_ty)
+          // namespace; treat as opaque GObject pointer with the
+          // namespace-prepended fallback name.
+          PtGObject(qname, TypeNaming.pony_type_name("", qname))
         else
           // Callbacks and aliases — don't yet have a v1 type
           // spelling. Surface as a skip rather than emit broken
@@ -220,27 +227,24 @@ primitive MethodEmitter
     end
 
 
-  fun _resolve_object_type(
+  fun _resolve_object_qname(
     gir_name: String,
     owner_ns: String)
-    : ((String val, String val) | None)
+    : (String val | None)
   =>
     """
-    "Window" + owner_ns="Gtk" → ("Gtk.Window", "GtkWindow")
-    "Gio.Application" → ("Gio.Application", "GioApplication")
+    Normalize a GIR type reference to its qname:
+      "Window" + owner_ns="Gtk" → "Gtk.Window"
+      "Gio.Application"         → "Gio.Application"
+    Returns None for empty input. The caller looks up the qname in
+    the model and reads c:type off the resolved node to produce the
+    pony-side type spelling.
     """
     if gir_name.size() == 0 then return None end
     if gir_name.contains(".") then
-      try
-        let idx = gir_name.find(".")?
-        let ns: String val = gir_name.substring(0, idx)
-        let local: String val = gir_name.substring(idx + 1)
-        return (gir_name, ns + local)
-      end
-      None
-    else
-      (owner_ns + "." + gir_name, owner_ns + gir_name)
+      return gir_name
     end
+    owner_ns + "." + gir_name
 
 
   fun _find_in_ancestry(

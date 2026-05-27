@@ -30,7 +30,7 @@ primitive GenAlias
     translate_ctx: (TranslateContext val | None) = None)
     : String val
   =>
-    let pony_name: String val = TypeNaming.pony_type_name(qname)
+    let pony_name: String val = TypeNaming.pony_type_name(node.target.c_type, qname)
     let target_gir = node.target.target.name
 
     let buf = recover iso String end
