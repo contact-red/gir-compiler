@@ -20,11 +20,17 @@
 // through to their Pony-name form (which may not resolve if the
 // type isn't in the loaded plan).
 
+use "../doc_translate"
 use "../gir"
 
 
 primitive GenCallback
-  fun apply(qname: String val, node: GirNodeCallback): String val =>
+  fun apply(
+    qname: String val,
+    node: GirNodeCallback,
+    translate_ctx: (TranslateContext val | None) = None)
+    : String val
+  =>
     let pony_name: String val = TypeNaming.pony_type_name(qname)
 
     let buf = recover iso String end
@@ -40,6 +46,7 @@ primitive GenCallback
     buf.append("interface ")
     buf.append(pony_name)
     buf.append("\n")
+    buf.append(DocstringWriter(node.target.doc, translate_ctx, "  "))
     buf.append("  fun ref apply(")
 
     var first: Bool = true

@@ -161,6 +161,7 @@ class val MethodSpec
   let parameters: Array[ParamSpec val] val
   let return_type: PonyType
   let shape: MethodShape
+  let doc: String val             // raw GIR <doc> text, empty if absent
 
   new val create(
     pony_name': String val,
@@ -170,7 +171,8 @@ class val MethodSpec
     inherited_from': (String val | None),
     parameters': Array[ParamSpec val] val,
     return_type': PonyType,
-    shape': MethodShape)
+    shape': MethodShape,
+    doc': String val)
   =>
     pony_name = pony_name'
     c_identifier = c_identifier'
@@ -180,6 +182,7 @@ class val MethodSpec
     parameters = parameters'
     return_type = return_type'
     shape = shape'
+    doc = doc'
 
 
 class val SkippedSpec
@@ -194,15 +197,18 @@ class val SkippedSpec
   let method_name: String val
   let receiver_qname: String val
   let reason: UnemittableReason
+  let doc: String val             // raw GIR <doc>, empty if absent
 
   new val create(
     method_name': String val,
     receiver_qname': String val,
-    reason': UnemittableReason)
+    reason': UnemittableReason,
+    doc': String val)
   =>
     method_name = method_name'
     receiver_qname = receiver_qname'
     reason = reason'
+    doc = doc'
 
 
 type MethodOutcome is (MethodSpec val | SkippedSpec val)

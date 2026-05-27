@@ -32,6 +32,7 @@
 // the user can `make scratch_emit && ponyc gen/<ns>/` to check.
 
 use "collections"
+use "../doc_translate"
 use "../gir"
 use "../planner"
 use "../scanner"
@@ -60,7 +61,8 @@ primitive GenClass
     qname: String val,
     node: GirNodeClass,
     plan: EmitPlan val,
-    model: GirModel val)
+    model: GirModel val,
+    translate_ctx: (TranslateContext val | None) = None)
     : String val
   =>
     let pony_name: String val = TypeNaming.pony_type_name(qname)
@@ -139,6 +141,7 @@ primitive GenClass
     buf.append("class ")
     buf.append(pony_name)
     buf.append("\n")
+    buf.append(DocstringWriter(node.target.doc, translate_ctx, "  "))
     buf.append("  let _h: GObjectHandle box\n")
     buf.append("  let _runtime: GtkRuntime tag\n\n")
     buf.append("  new _wrap(h: GObjectHandle box, runtime: GtkRuntime tag) =>\n")
@@ -148,6 +151,6 @@ primitive GenClass
     buf.append("  fun box _runtime_ref(): GtkRuntime tag => _runtime\n")
 
     for o_emit in outcomes.values() do
-      buf.append(MethodEmitter.emit(o_emit))
+      buf.append(MethodEmitter.emit(o_emit, translate_ctx))
     end
     consume buf

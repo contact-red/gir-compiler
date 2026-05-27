@@ -15,6 +15,7 @@
 //       MethodOutcome
 //     called once per constructor on every type in T
 
+use "../doc_translate"
 use "../gir"
 
 
@@ -34,12 +35,12 @@ primitive MethodEmitter
     | (let m: RawGirMethod val,
         let owner_qname: String val,
         let owner_ns: String val) =>
-      _wrap_skip(receiver_qname, method_name,
+      _wrap_skip(receiver_qname, method_name, m.doc,
         _classify_raw(m, receiver_qname, owner_qname, owner_ns,
           method_name, model))
     else
       // Not a method — maybe a connect_X for a signal.
-      _wrap_skip(receiver_qname, method_name,
+      _wrap_skip(receiver_qname, method_name, "",
         _classify_signal(receiver_qname, method_name, model))
     end
 
@@ -47,6 +48,7 @@ primitive MethodEmitter
   fun _wrap_skip(
     receiver_qname: String val,
     method_name: String val,
+    doc: String val,
     outcome: (MethodSpec val | UnemittableReason))
     : MethodOutcome
   =>
@@ -54,12 +56,14 @@ primitive MethodEmitter
     classify_raw / classify_signal return the inner (MethodSpec |
     UnemittableReason). Wrap the reason side with method/receiver
     context so the emitter can produce a compile_error stub keyed
-    by name.
+    by name. `doc` carries any GIR <doc> text we want preserved on
+    the skip stub so docs-mode generation can still show users what
+    the missing method does.
     """
     match outcome
     | let s: MethodSpec val => s
     | let r: UnemittableReason =>
-      SkippedSpec(method_name, receiver_qname, r)
+      SkippedSpec(method_name, receiver_qname, r, doc)
     end
 
 
@@ -77,7 +81,7 @@ primitive MethodEmitter
     and types not descending from GInitiallyUnowned are
     UnemittableUnsupportedShape until follow-up work.
     """
-    _wrap_skip(receiver_qname, "create",
+    _wrap_skip(receiver_qname, "create", raw_ctor.doc,
       _classify_raw(
         raw_ctor,
         receiver_qname,
@@ -138,7 +142,8 @@ primitive MethodEmitter
       if owner_qname == receiver_qname then None else owner_qname end,
       consume params,
       return_type,
-      shape)
+      shape,
+      m.doc)
 
 
   fun _pony_type_for(
@@ -338,7 +343,9 @@ primitive MethodEmitter
       None,
       recover val Array[ParamSpec val] end,
       PtNone,
-      ShapeSignalConnect)
+      ShapeSignalConnect,
+      "")                           // signal-connect helpers have no GIR doc
+
 
 
   fun _signal_exists_in_ancestry(
@@ -371,16 +378,20 @@ primitive MethodEmitter
 
   // ---- Emission ----
 
-  fun emit(outcome: MethodOutcome): String val =>
+  fun emit(
+    outcome: MethodOutcome,
+    translate_ctx: (TranslateContext val | None) = None)
+    : String val
+  =>
     match outcome
     | let spec: MethodSpec val =>
       match spec.shape
-      | ShapeTrivialVoid         => _emit_trivial_void(spec)
-      | ShapeTrivialReturn       => _emit_trivial_return(spec)
-      | ShapeConstructorFloating => _emit_constructor_floating(spec)
-      | ShapeSignalConnect       => _emit_signal_connect(spec)
+      | ShapeTrivialVoid         => _emit_trivial_void(spec, translate_ctx)
+      | ShapeTrivialReturn       => _emit_trivial_return(spec, translate_ctx)
+      | ShapeConstructorFloating => _emit_constructor_floating(spec, translate_ctx)
+      | ShapeSignalConnect       => _emit_signal_connect(spec, translate_ctx)
       end
-    | let s: SkippedSpec val => _emit_skip_stub(s)
+    | let s: SkippedSpec val => _emit_skip_stub(s, translate_ctx)
     end
 
 
@@ -418,13 +429,19 @@ primitive MethodEmitter
     consume buf
 
 
-  fun _emit_trivial_void(spec: MethodSpec val): String val =>
+  fun _emit_trivial_void(
+    spec: MethodSpec val,
+    translate_ctx: (TranslateContext val | None))
+    : String val
+  =>
     let buf = recover iso String end
     buf.append("\n  fun ref ")
     buf.append(spec.pony_name)
     buf.append("(")
     buf.append(_pony_params_str(spec.parameters))
-    buf.append(") =>\n    @")
+    buf.append(") =>\n")
+    buf.append(DocstringWriter(spec.doc, translate_ctx, "    "))
+    buf.append("    @")
     buf.append(spec.c_identifier)
     buf.append("(_h.raw()")
     for p in spec.parameters.values() do
@@ -435,7 +452,11 @@ primitive MethodEmitter
     consume buf
 
 
-  fun _emit_trivial_return(spec: MethodSpec val): String val =>
+  fun _emit_trivial_return(
+    spec: MethodSpec val,
+    translate_ctx: (TranslateContext val | None))
+    : String val
+  =>
     let buf = recover iso String end
     buf.append("\n  fun ref ")
     buf.append(spec.pony_name)
@@ -443,7 +464,9 @@ primitive MethodEmitter
     buf.append(_pony_params_str(spec.parameters))
     buf.append("): ")
     buf.append(_pony_type_decl(spec.return_type))
-    buf.append(" =>\n    @")
+    buf.append(" =>\n")
+    buf.append(DocstringWriter(spec.doc, translate_ctx, "    "))
+    buf.append("    @")
     buf.append(spec.c_identifier)
     buf.append("(_h.raw()")
     for p in spec.parameters.values() do
@@ -454,11 +477,17 @@ primitive MethodEmitter
     consume buf
 
 
-  fun _emit_constructor_floating(spec: MethodSpec val): String val =>
+  fun _emit_constructor_floating(
+    spec: MethodSpec val,
+    translate_ctx: (TranslateContext val | None))
+    : String val
+  =>
     let buf = recover iso String end
     buf.append("\n  new create(")
     buf.append(_pony_params_str(spec.parameters))
-    buf.append(") =>\n    let raw = @")
+    buf.append(") =>\n")
+    buf.append(DocstringWriter(spec.doc, translate_ctx, "    "))
+    buf.append("    let raw = @")
     buf.append(spec.c_identifier)
     buf.append("(")
     var first: Bool = true
@@ -486,17 +515,26 @@ primitive MethodEmitter
     consume buf
 
 
-  fun _emit_signal_connect(spec: MethodSpec val): String val =>
+  fun _emit_signal_connect(
+    spec: MethodSpec val,
+    translate_ctx: (TranslateContext val | None))
+    : String val
+  =>
     // For v1 only `connect_close_request` is wired.
     let buf = recover iso String end
     buf.append("\n  fun ref ")
     buf.append(spec.pony_name)
     buf.append("(handler: CloseRequestHandler) =>\n")
+    buf.append(DocstringWriter(spec.doc, translate_ctx, "    "))
     buf.append("    _runtime._register_close_request(_h.raw(), handler)\n")
     consume buf
 
 
-  fun _emit_skip_stub(s: SkippedSpec val): String val =>
+  fun _emit_skip_stub(
+    s: SkippedSpec val,
+    translate_ctx: (TranslateContext val | None))
+    : String val
+  =>
     """
     Emit a method declaration that fails at the call site with a
     useful compile_error message. The body sits inside `ifdef linux
@@ -505,11 +543,17 @@ primitive MethodEmitter
     methods don't trigger their compile_error). Wrong-arity calls
     will get the ordinary `wrong number of arguments` error from
     ponyc.
+
+    The docstring is emitted before the ifdef so it survives both
+    docs-mode rendering (visible to readers on the docs site) and
+    compile-mode tree-shaking (the doc is a string literal Pony
+    keeps as method documentation).
     """
     let buf = recover iso String end
     buf.append("\n  fun ref ")
     buf.append(s.method_name)
     buf.append("() =>\n")
+    buf.append(DocstringWriter(s.doc, translate_ctx, "    "))
     buf.append("    ifdef linux or windows or osx then\n")
     buf.append("      compile_error \"")
     buf.append(s.receiver_qname)

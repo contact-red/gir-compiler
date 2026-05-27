@@ -21,11 +21,17 @@
 // integer back. The type alias forms a sealed union so callers can
 // match exhaustively.
 
+use "../doc_translate"
 use "../gir"
 
 
 primitive GenEnum
-  fun apply(qname: String val, node: GirNodeEnumeration): String val =>
+  fun apply(
+    qname: String val,
+    node: GirNodeEnumeration,
+    translate_ctx: (TranslateContext val | None) = None)
+    : String val
+  =>
     let pony_name: String val = TypeNaming.pony_type_name(qname)
 
     let buf = recover iso String end
@@ -70,6 +76,7 @@ primitive GenEnum
       buf.append("\n")
     end
     buf.append("  )\n")
+    buf.append(DocstringWriter(node.target.doc, translate_ctx, "  "))
     consume buf
 
 

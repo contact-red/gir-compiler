@@ -17,11 +17,17 @@
 //
 //     fun raw(): Pointer[U8] tag => _raw
 
+use "../doc_translate"
 use "../gir"
 
 
 primitive GenRecord
-  fun apply(qname: String val, node: GirNodeRecord): String val =>
+  fun apply(
+    qname: String val,
+    node: GirNodeRecord,
+    translate_ctx: (TranslateContext val | None) = None)
+    : String val
+  =>
     let pony_name: String val = TypeNaming.pony_type_name(qname)
 
     let buf = recover iso String end
@@ -37,6 +43,7 @@ primitive GenRecord
     buf.append("class val ")
     buf.append(pony_name)
     buf.append("\n")
+    buf.append(DocstringWriter(node.target.doc, translate_ctx, "  "))
     buf.append("  let _raw: Pointer[U8] tag\n\n")
     buf.append("  new val _wrap(raw': Pointer[U8] tag) =>\n")
     buf.append("    _raw = raw'\n\n")

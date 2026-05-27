@@ -14,11 +14,17 @@
 // downstream emitter needs them as constraints for the flattened
 // class methods.
 
+use "../doc_translate"
 use "../gir"
 
 
 primitive GenInterface
-  fun apply(qname: String val, node: GirNodeInterface): String val =>
+  fun apply(
+    qname: String val,
+    node: GirNodeInterface,
+    translate_ctx: (TranslateContext val | None) = None)
+    : String val
+  =>
     let pony_name: String val = TypeNaming.pony_type_name(qname)
 
     let buf = recover iso String end
@@ -42,4 +48,5 @@ primitive GenInterface
     buf.append("trait ")
     buf.append(pony_name)
     buf.append("\n")
+    buf.append(DocstringWriter(node.target.doc, translate_ctx, "  "))
     consume buf

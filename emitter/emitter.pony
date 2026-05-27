@@ -29,19 +29,29 @@
 
 use "collections"
 use "files"
+use "../doc_translate"
 use "../gir"
 use "../planner"
 use "ssl/crypto"
 
 
 primitive Emitter
-  fun apply(plan: EmitPlan val, model: GirModel val, output_root: FilePath)
+  fun apply(
+    plan: EmitPlan val,
+    model: GirModel val,
+    output_root: FilePath,
+    emit_docstrings: Bool = false)
     : (EmitOutcome val | EmitError)
   =>
     """
     Emit every type in `plan` as a stub file under output_root,
     grouped by GIR namespace. Returns an EmitOutcome on success or
     an EmitError describing the first failure.
+
+    When `emit_docstrings` is true, each generated type and method
+    carries the GIR `<doc>` text translated to a Pony docstring (via
+    the `doc_translate` package). Defaults to false so compile-mode
+    callers see the same output they did before.
     """
     if not _ensure_dir(output_root) then
       return EmitDirError(output_root.path, "cannot create output root")
@@ -104,8 +114,14 @@ primitive Emitter
         let node = try group(qname)? else continue end
         let local = _local_name(qname)
         let filename: String val = local + ".pony"
+        let translate_ctx: (TranslateContext val | None) =
+          if emit_docstrings then
+            TranslateContext(_namespace_of(node), model)
+          else
+            None
+          end
         let content: String val =
-          _content_for_node(qname, node, plan, model)
+          _content_for_node(qname, node, plan, model, translate_ctx)
         let hash_hex: String val = ToHexString(SHA256(content))
 
         let file_path =
@@ -208,23 +224,25 @@ primitive Emitter
     qname: String val,
     node: GirNodeRef,
     plan: EmitPlan val,
-    model: GirModel val)
+    model: GirModel val,
+    translate_ctx: (TranslateContext val | None))
     : String val
   =>
     """
     Dispatch to the per-kind generator. Kinds that emit constructors
     and methods (class, interface, record) receive the plan + model
     so they can drive MethodEmitter; pure-data kinds (alias, enum,
-    bitfield, callback) don't need them.
+    bitfield, callback) don't need them. The optional
+    `translate_ctx` enables per-entity docstring emission.
     """
     match node
-    | let a: GirNodeAlias => GenAlias(qname, a)
-    | let e: GirNodeEnumeration => GenEnum(qname, e)
-    | let b: GirNodeBitfield => GenBitfield(qname, b)
-    | let cls: GirNodeClass => GenClass(qname, cls, plan, model)
-    | let iface: GirNodeInterface => GenInterface(qname, iface)
-    | let rec: GirNodeRecord => GenRecord(qname, rec)
-    | let cb: GirNodeCallback => GenCallback(qname, cb)
+    | let a: GirNodeAlias => GenAlias(qname, a, translate_ctx)
+    | let e: GirNodeEnumeration => GenEnum(qname, e, translate_ctx)
+    | let b: GirNodeBitfield => GenBitfield(qname, b, translate_ctx)
+    | let cls: GirNodeClass => GenClass(qname, cls, plan, model, translate_ctx)
+    | let iface: GirNodeInterface => GenInterface(qname, iface, translate_ctx)
+    | let rec: GirNodeRecord => GenRecord(qname, rec, translate_ctx)
+    | let cb: GirNodeCallback => GenCallback(qname, cb, translate_ctx)
     end
 
 
