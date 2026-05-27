@@ -107,20 +107,26 @@ class val GirModel
   `repositories` carries every input repository as evidence (useful for
   iteration, diagnostics, and re-emission tooling). `by_qname` indexes
   every named GIR type from every repository under its qualified name
-  ("Gtk.Application", "Gio.File"). `namespaces` provides per-namespace
-  lookup for "give me everything in Gtk".
+  ("Gtk.Application", "Gio.File"). `by_c_type` provides reverse lookup
+  by the GIR-declared C type name ("GtkApplication", "GFile") — used
+  by the doc translator to resolve legacy gtk-doc `#CType` references.
+  `namespaces` provides per-namespace lookup for "give me everything
+  in Gtk".
   """
   let repositories: Array[RawGirRepository val] val
   let by_qname: Map[String val, GirNodeRef] val
+  let by_c_type: Map[String val, GirNodeRef] val
   let namespaces: Map[NamespaceName, RawGirNamespace val] val
 
   new val _validated(
     repositories': Array[RawGirRepository val] val,
     by_qname': Map[String val, GirNodeRef] val,
+    by_c_type': Map[String val, GirNodeRef] val,
     namespaces': Map[NamespaceName, RawGirNamespace val] val)
   =>
     repositories = repositories'
     by_qname = by_qname'
+    by_c_type = by_c_type'
     namespaces = namespaces'
 
   fun box resolve(qname: String): (GirNodeRef | None) =>
@@ -130,6 +136,16 @@ class val GirModel
     like "utf8", "gint", "gboolean", which have no qname.
     """
     try by_qname(qname)? else None end
+
+  fun box resolve_by_c_type(c_type: String): (GirNodeRef | None) =>
+    """
+    Look up a GIR type by its C type name ("GtkApplication", "GFile").
+    Used by the doc translator to resolve legacy gtk-doc `#CType`
+    references. Returns None when no loaded namespace declares that
+    C type — common for types belonging to namespaces the caller
+    chose not to load.
+    """
+    try by_c_type(c_type)? else None end
 
   fun box namespace_for(name: NamespaceName): (RawGirNamespace val | None) =>
     """

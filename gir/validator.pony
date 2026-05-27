@@ -26,6 +26,7 @@ primitive GirValidator
     end
 
     let by_qname = recover iso Map[String val, GirNodeRef] end
+    let by_c_type = recover iso Map[String val, GirNodeRef] end
     let namespaces = recover iso Map[NamespaceName, RawGirNamespace val] end
 
     for repo in repositories.values() do
@@ -44,7 +45,9 @@ primitive GirValidator
           if by_qname.contains(qcls) then
             return GirDuplicateQName(qcls, "conflicts with another node")
           end
-          by_qname(qcls) = GirNodeClass(ns_name, cls)
+          let node = GirNodeClass(ns_name, cls)
+          by_qname(qcls) = node
+          if cls.c_type.size() > 0 then by_c_type(cls.c_type) = node end
         end
 
         for iface in ns.interfaces.values() do
@@ -52,7 +55,9 @@ primitive GirValidator
           if by_qname.contains(qif) then
             return GirDuplicateQName(qif, "conflicts with another node")
           end
-          by_qname(qif) = GirNodeInterface(ns_name, iface)
+          let node = GirNodeInterface(ns_name, iface)
+          by_qname(qif) = node
+          if iface.c_type.size() > 0 then by_c_type(iface.c_type) = node end
         end
 
         for rec in ns.records.values() do
@@ -60,7 +65,9 @@ primitive GirValidator
           if by_qname.contains(qrec) then
             return GirDuplicateQName(qrec, "conflicts with another node")
           end
-          by_qname(qrec) = GirNodeRecord(ns_name, rec)
+          let node = GirNodeRecord(ns_name, rec)
+          by_qname(qrec) = node
+          if rec.c_type.size() > 0 then by_c_type(rec.c_type) = node end
         end
 
         for enumeration in ns.enumerations.values() do
@@ -68,7 +75,11 @@ primitive GirValidator
           if by_qname.contains(qenum) then
             return GirDuplicateQName(qenum, "conflicts with another node")
           end
-          by_qname(qenum) = GirNodeEnumeration(ns_name, enumeration)
+          let node = GirNodeEnumeration(ns_name, enumeration)
+          by_qname(qenum) = node
+          if enumeration.c_type.size() > 0 then
+            by_c_type(enumeration.c_type) = node
+          end
         end
 
         for bf in ns.bitfields.values() do
@@ -76,7 +87,9 @@ primitive GirValidator
           if by_qname.contains(qbf) then
             return GirDuplicateQName(qbf, "conflicts with another node")
           end
-          by_qname(qbf) = GirNodeBitfield(ns_name, bf)
+          let node = GirNodeBitfield(ns_name, bf)
+          by_qname(qbf) = node
+          if bf.c_type.size() > 0 then by_c_type(bf.c_type) = node end
         end
 
         for cb in ns.callbacks.values() do
@@ -84,7 +97,9 @@ primitive GirValidator
           if by_qname.contains(qcb) then
             return GirDuplicateQName(qcb, "conflicts with another node")
           end
-          by_qname(qcb) = GirNodeCallback(ns_name, cb)
+          let node = GirNodeCallback(ns_name, cb)
+          by_qname(qcb) = node
+          if cb.c_type.size() > 0 then by_c_type(cb.c_type) = node end
         end
 
         for al in ns.aliases.values() do
@@ -92,7 +107,9 @@ primitive GirValidator
           if by_qname.contains(qal) then
             return GirDuplicateQName(qal, "conflicts with another node")
           end
-          by_qname(qal) = GirNodeAlias(ns_name, al)
+          let node = GirNodeAlias(ns_name, al)
+          by_qname(qal) = node
+          if al.c_type.size() > 0 then by_c_type(al.c_type) = node end
         end
       end
     end
@@ -100,4 +117,5 @@ primitive GirValidator
     GirModel._validated(
       repositories,
       consume by_qname,
+      consume by_c_type,
       consume namespaces)
