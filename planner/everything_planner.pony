@@ -38,25 +38,21 @@ primitive EverythingPlanner
 
     for (qname, node) in model.by_qname.pairs() do
       types(qname) = node
+      // Methods only — constructors are iterated separately by
+      // each Gen* via `node.target.constructors` and would
+      // double-emit (once as `new create(...)` from the constructor
+      // pass, once as `fun ref <name>()` from method_calls) if
+      // we added them here too.
       match node
       | let c: GirNodeClass =>
-        for m in c.target.constructors.values() do
-          method_calls.set(MethodCallRef(qname, m.name))
-        end
         for m in c.target.methods.values() do
           method_calls.set(MethodCallRef(qname, m.name))
         end
       | let i: GirNodeInterface =>
-        for m in i.target.constructors.values() do
-          method_calls.set(MethodCallRef(qname, m.name))
-        end
         for m in i.target.methods.values() do
           method_calls.set(MethodCallRef(qname, m.name))
         end
       | let r: GirNodeRecord =>
-        for m in r.target.constructors.values() do
-          method_calls.set(MethodCallRef(qname, m.name))
-        end
         for m in r.target.methods.values() do
           method_calls.set(MethodCallRef(qname, m.name))
         end
