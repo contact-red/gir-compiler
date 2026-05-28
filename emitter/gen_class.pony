@@ -197,12 +197,12 @@ primitive GenClass
     buf.append("\n")
     buf.append(DocstringWriter(node.target.doc, translate_ctx, "  "))
     buf.append("  let _h: GObjectHandle box\n")
-    buf.append("  let _runtime: GtkRuntime tag\n\n")
-    buf.append("  new _wrap(h: GObjectHandle box, runtime: GtkRuntime tag) =>\n")
+    buf.append("  let _runtime: PinnedRuntime tag\n\n")
+    buf.append("  new _wrap(h: GObjectHandle box, runtime: PinnedRuntime tag) =>\n")
     buf.append("    _h = h\n")
     buf.append("    _runtime = runtime\n\n")
     buf.append("  fun box _handle(): GObjectHandle box => _h\n")
-    buf.append("  fun box _runtime_ref(): GtkRuntime tag => _runtime\n")
+    buf.append("  fun box _runtime_ref(): PinnedRuntime tag => _runtime\n")
 
     for o_emit in outcomes.values() do
       buf.append(MethodEmitter.emit(o_emit, translate_ctx))

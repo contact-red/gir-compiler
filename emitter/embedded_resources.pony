@@ -12,8 +12,9 @@ primitive EmbeddedResources
     """
     recover val
       [
-        ("gobject_runtime/handle.pony", _gobject_runtime_handle())
-        ("gtk/runtime.pony",            _gtk_runtime())
+        ("gobject_runtime/handle.pony",         _gobject_runtime_handle())
+        ("gobject_runtime/pinned_runtime.pony", _gobject_runtime_pinned())
+        ("gtk/runtime.pony",                    _gtk_runtime())
       ]
     end
 
@@ -70,6 +71,48 @@ primitive EmbeddedResources
     "      @g_object_unref(_ptr)\n" +
     "    end\n"
 
+  fun _gobject_runtime_pinned(): String val =>
+    "// PinnedRuntime — the structural interface every generated binding\n" +
+    "// stores its runtime reference through.\n" +
+    "//\n" +
+    "// We can't have every generated class declare `let _runtime:\n" +
+    "// GtkRuntime tag` directly, because GtkRuntime lives in the gtk\n" +
+    "// package: non-gtk generated packages (gio, gobject, glib …) would\n" +
+    "// have to `use \"../gtk\"`, and the gtk package imports them back,\n" +
+    "// closing a cycle. Pony rejects that.\n" +
+    "//\n" +
+    "// Instead: declare the methods generated bindings need to call on\n" +
+    "// their runtime as a structural interface here, in gobject_runtime\n" +
+    "// (which no generated package transitively depends on). GtkRuntime\n" +
+    "// (in gtk/runtime.pony) declares behaviors with matching signatures\n" +
+    "// and Pony's structural matching makes a GtkRuntime tag assignable\n" +
+    "// to a PinnedRuntime tag. The cycle never forms because the\n" +
+    "// interface itself only references types declared in gobject_runtime.\n" +
+    "//\n" +
+    "// The methods named here are the minimal set the emitter generates\n" +
+    "// calls to today. Adding new signal-connect shapes (beyond\n" +
+    "// close-request) is a follow-up: extend this interface and have\n" +
+    "// GtkRuntime add the matching behavior.\n" +
+    "\n" +
+    "\n" +
+    "type CloseRequestHandler is {()} val\n" +
+    "  \"\"\"\n" +
+    "  User-supplied closure invoked when a window's \"close-request\"\n" +
+    "  signal fires. Runs after the close has already been allowed (the\n" +
+    "  trampoline hard-codes a false return). Use this for cleanup logic.\n" +
+    "  \"\"\"\n" +
+    "\n" +
+    "\n" +
+    "interface tag PinnedRuntime\n" +
+    "  \"\"\"\n" +
+    "  The structural slice of `GtkRuntime` that generated bindings\n" +
+    "  invoke. Lives in gobject_runtime to keep this header free of\n" +
+    "  references to types declared in dependent packages.\n" +
+    "  \"\"\"\n" +
+    "  be register_close_request(\n" +
+    "    window_ptr: Pointer[U8] tag,\n" +
+    "    handler: CloseRequestHandler)\n"
+
   fun _gtk_runtime(): String val =>
     "\"\"\"\n" +
     "GtkRuntime — the pinned actor that owns the GLib main loop and serves\n" +
@@ -123,12 +166,9 @@ primitive EmbeddedResources
     "  signal fires. Runs synchronously inside a GtkRuntime behavior.\n" +
     "  \"\"\"\n" +
     "\n" +
-    "type CloseRequestHandler is {()} val\n" +
-    "  \"\"\"\n" +
-    "  User-supplied closure invoked when a window's \"close-request\" signal\n" +
-    "  fires. Runs after the close has already been allowed (the trampoline\n" +
-    "  hard-codes a false return). Use this for cleanup logic.\n" +
-    "  \"\"\"\n" +
+    "// CloseRequestHandler lives in gobject_runtime so generated bindings\n" +
+    "// in other packages can reference it through the PinnedRuntime\n" +
+    "// interface without importing gtk. See gobject_runtime/pinned_runtime.pony.\n" +
     "\n" +
     "\n" +
     "// Bare-function trampolines. C ABI. Called by GTK on the pinned thread.\n" +
@@ -240,10 +280,16 @@ primitive EmbeddedResources
     "      handler(app)\n" +
     "    end\n" +
     "\n" +
-    "  be _register_close_request(\n" +
+    "  be register_close_request(\n" +
     "    window_ptr: Pointer[U8] tag,\n" +
     "    handler: CloseRequestHandler)\n" +
     "  =>\n" +
+    "    \"\"\"\n" +
+    "    Signature matches `PinnedRuntime.register_close_request` so a\n" +
+    "    `GtkRuntime tag` is structurally assignable to a\n" +
+    "    `PinnedRuntime tag`. Generated widget classes call this through\n" +
+    "    the PinnedRuntime interface.\n" +
+    "    \"\"\"\n" +
     "    _close_request_handlers(window_ptr.usize()) = handler\n" +
     "    @g_signal_connect_data(\n" +
     "      window_ptr,\n" +

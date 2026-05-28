@@ -622,13 +622,16 @@ primitive MethodEmitter
     translate_ctx: (TranslateContext val | None))
     : String val
   =>
-    // For v1 only `connect_close_request` is wired.
+    // For v1 only `connect_close_request` is wired. The call goes
+    // through the PinnedRuntime interface (in gobject_runtime), so
+    // every generated package — including gobject, gio, glib — can
+    // declare `_runtime: PinnedRuntime tag` without importing gtk.
     let buf = recover iso String end
     buf.append("\n  fun ref ")
     buf.append(spec.pony_name)
     buf.append("(handler: CloseRequestHandler) =>\n")
     buf.append(DocstringWriter(spec.doc, translate_ctx, "    "))
-    buf.append("    _runtime._register_close_request(_h.raw(), handler)\n")
+    buf.append("    _runtime.register_close_request(_h.raw(), handler)\n")
     consume buf
 
 
