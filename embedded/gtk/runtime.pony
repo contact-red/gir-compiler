@@ -158,7 +158,7 @@ actor GtkRuntime
   be _dispatch_activate(sender: Pointer[U8] tag) =>
     try
       let handler = _activate_handlers(sender.usize())?
-      let app = GtkApplication._wrap(
+      let app = GtkApplication.wrap(
         GObjectHandle.adopt_borrowed(sender),
         this)
       handler(app)

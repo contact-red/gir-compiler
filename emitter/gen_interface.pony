@@ -45,8 +45,26 @@ primitive GenInterface
     end
     buf.append("\n\n")
 
-    buf.append("trait ")
+    buf.append("use \"../gobject_runtime\"\n\n")
+
+    // Interfaces emit as class wrappers with the same shell as classes
+    // (`_h`, `_runtime`, `wrap`, `handle`, `runtime_ref`). They carry no
+    // method bodies in v1, but the wrapper shape is required because
+    // an interface-typed return value (e.g. a method that returns a
+    // `GFile`) needs something concrete to wrap the raw pointer into.
+    // Treating the interface as a class lets the marshaller and return
+    // wrapper use the same `handle()` / `wrap(...)` calls that work on
+    // classes. Method emission on interfaces (which would require the
+    // type to be a trait satisfied by implementing classes) is deferred.
+    buf.append("class ")
     buf.append(pony_name)
     buf.append("\n")
     buf.append(DocstringWriter(node.target.doc, translate_ctx, "  "))
+    buf.append("  let _h: GObjectHandle box\n")
+    buf.append("  let _runtime: PinnedRuntime tag\n\n")
+    buf.append("  new wrap(h: GObjectHandle box, runtime: PinnedRuntime tag) =>\n")
+    buf.append("    _h = h\n")
+    buf.append("    _runtime = runtime\n\n")
+    buf.append("  fun box handle(): GObjectHandle box => _h\n")
+    buf.append("  fun box runtime_ref(): PinnedRuntime tag => _runtime\n")
     consume buf

@@ -10,12 +10,12 @@
 //     let _h: GObjectHandle box
 //     let _runtime: GtkRuntime tag
 //
-//     new _wrap(h: GObjectHandle box, runtime: GtkRuntime tag) =>
+//     new wrap(h: GObjectHandle box, runtime: PinnedRuntime tag) =>
 //       _h = h
 //       _runtime = runtime
 //
-//     fun box _handle(): GObjectHandle box => _h
-//     fun box _runtime_ref(): GtkRuntime tag => _runtime
+//     fun box handle(): GObjectHandle box => _h
+//     fun box runtime_ref(): PinnedRuntime tag => _runtime
 //
 //     <constructors>           — every constructor in the GIR class,
 //                                except those on the hand-curated
@@ -83,15 +83,15 @@ primitive GenClass
     // method will land on so the classifier can disambiguate
     // parameter names that would otherwise shadow them. Also include
     // the names of the synthetic fields and methods that gen_class
-    // itself emits (_h, _runtime, _wrap, _handle, _runtime_ref) so
+    // itself emits (_h, _runtime, wrap, handle, runtime_ref) so
     // params don't clash with those either.
     let class_member_names: Set[String val] iso = recover iso
       let s = Set[String val]
       s.set("_h")
       s.set("_runtime")
-      s.set("_wrap")
-      s.set("_handle")
-      s.set("_runtime_ref")
+      s.set("wrap")
+      s.set("handle")
+      s.set("runtime_ref")
       s
     end
     if not SuppressedConstruction(qname) then
@@ -198,11 +198,11 @@ primitive GenClass
     buf.append(DocstringWriter(node.target.doc, translate_ctx, "  "))
     buf.append("  let _h: GObjectHandle box\n")
     buf.append("  let _runtime: PinnedRuntime tag\n\n")
-    buf.append("  new _wrap(h: GObjectHandle box, runtime: PinnedRuntime tag) =>\n")
+    buf.append("  new wrap(h: GObjectHandle box, runtime: PinnedRuntime tag) =>\n")
     buf.append("    _h = h\n")
     buf.append("    _runtime = runtime\n\n")
-    buf.append("  fun box _handle(): GObjectHandle box => _h\n")
-    buf.append("  fun box _runtime_ref(): PinnedRuntime tag => _runtime\n")
+    buf.append("  fun box handle(): GObjectHandle box => _h\n")
+    buf.append("  fun box runtime_ref(): PinnedRuntime tag => _runtime\n")
 
     for o_emit in outcomes.values() do
       buf.append(MethodEmitter.emit(o_emit, translate_ctx))

@@ -179,6 +179,50 @@ primitive MethodEmitter
       | let u: UnemittableReason => return u
       end
 
+    // We can wrap most return types, but PtBitfield and PtEnum need a
+    // from-integer constructor we haven't built yet — emitting a
+    // declared `: GtkOrientation` body that returns the raw I32 would
+    // fail to type-check. Constructors are exempt because their
+    // ShapeConstructorFloating body builds the receiver directly, not
+    // by wrapping a return value — but they have their own check
+    // below (they need a runtime source).
+    match m.kind
+    | RawGirMethodKindConstructor =>
+      // Constructors initialize `_runtime` by reading `runtime_ref()`
+      // off the first class/interface-kind GObject parameter. If no
+      // such parameter exists there's no way to populate the field
+      // and ponyc rejects the class with "field left undefined".
+      // Skip the constructor in that case — the type can still be
+      // created via methods that return it on other instances.
+      // Resolve each GIR parameter type freshly here rather than
+      // touching `params` (which is iso and would need a destructive
+      // read to inspect).
+      var has_runtime_source: Bool = false
+      for p in m.parameters.values() do
+        match _pony_type_for(p.typ.name, owner_ns, "constructor param", model)
+        | let g: PtGObject =>
+          match g.kind
+          | PtGObjectRecord => None
+          else
+            has_runtime_source = true
+            break
+          end
+        end
+      end
+      if not has_runtime_source then
+        return UnemittableUnsupportedShape(
+          "constructor has no class/interface GObject parameter to "
+          + "source _runtime from")
+      end
+    else
+      match return_type
+      | let _: PtBitfield => return UnemittableUnsupportedShape(
+          "method returns a bitfield (no from-integer wrap yet)")
+      | let _: PtEnum => return UnemittableUnsupportedShape(
+          "method returns an enum (no from-integer wrap yet)")
+      end
+    end
+
     // Pick body shape.
     let shape: MethodShape =
       match m.kind
@@ -259,13 +303,16 @@ primitive MethodEmitter
           PtEnum(canon, TypeNaming.pony_name_for_node(e, canon))
         | let c: GirNodeClass =>
           let canon = _canonical_qname(c.target.c_type, qname, model)
-          PtGObject(canon, TypeNaming.pony_name_for_node(c, canon))
+          PtGObject(canon, TypeNaming.pony_name_for_node(c, canon),
+            PtGObjectClass)
         | let i: GirNodeInterface =>
           let canon = _canonical_qname(i.target.c_type, qname, model)
-          PtGObject(canon, TypeNaming.pony_name_for_node(i, canon))
+          PtGObject(canon, TypeNaming.pony_name_for_node(i, canon),
+            PtGObjectInterface)
         | let r: GirNodeRecord =>
           let canon = _canonical_qname(r.target.c_type, qname, model)
-          PtGObject(canon, TypeNaming.pony_name_for_node(r, canon))
+          PtGObject(canon, TypeNaming.pony_name_for_node(r, canon),
+            PtGObjectRecord)
         else
           // Includes None (type lives in an unloaded namespace) and
           // callback / alias kinds we don't yet have a v1 type
@@ -507,7 +554,7 @@ primitive MethodEmitter
     buf.append("use @")
     buf.append(spec.c_identifier)
     buf.append("[")
-    buf.append(_ffi_type(spec.return_type))
+    buf.append(_ffi_return_type(spec.return_type))
     buf.append("](")
 
     var first: Bool = true
@@ -566,15 +613,58 @@ primitive MethodEmitter
     buf.append(_pony_type_decl(spec.return_type))
     buf.append(" =>\n")
     buf.append(DocstringWriter(spec.doc, translate_ctx, "    "))
-    buf.append("    @")
-    buf.append(spec.c_identifier)
-    buf.append("(_h.raw()")
-    for p in spec.parameters.values() do
-      buf.append(", ")
-      buf.append(_marshal_arg(p))
+    // Build the FFI call expression `@symbol(_h.raw(), <marshalled args>)`
+    // separately so the return wrapper can place it inside the right
+    // wrapping form.
+    let ffi_call = recover val
+      let c = String
+      c.append("@")
+      c.append(spec.c_identifier)
+      c.append("(_h.raw()")
+      for p in spec.parameters.values() do
+        c.append(", ")
+        c.append(_marshal_arg(p))
+      end
+      c.append(")")
+      c
     end
-    buf.append(")\n")
+    buf.append("    ")
+    buf.append(_wrap_return(spec.return_type, ffi_call))
+    buf.append("\n")
     consume buf
+
+
+  fun _wrap_return(t: PonyType, ffi_call: String val): String val =>
+    """
+    Convert a raw FFI result into a value of the declared Pony return
+    type. Numeric primitives pass through unchanged; utf8 boxes via
+    String.from_cstring; PtGObject class/interface calls
+    <Type>.wrap(GObjectHandle.adopt_borrowed(<raw>), _runtime); PtGObject
+    record calls <Type>.wrap(<raw>) — record wrappers take a raw
+    pointer directly. (PtBitfield and PtEnum returns are intercepted
+    at classification time with UnemittableUnsupportedShape — we don't
+    have a from-integer constructor for those shapes yet.)
+    """
+    match t
+    | let _: PtUtf8 =>
+      // String.from_cstring's body type is `String ref^`, which
+      // isn't a subtype of `val`. A `recover val` block would lift
+      // the cap, but it can't read non-sendable fields (we'd need
+      // `_h.raw()` inside the recover). `.clone()` returns
+      // `String iso^`, which `val` accepts, and the cost is a
+      // single buffer copy.
+      "String.from_cstring(" + ffi_call + ").clone()"
+    | let g: PtGObject =>
+      match g.kind
+      | PtGObjectRecord =>
+        g.pony_type + ".wrap(" + ffi_call + ")"
+      else
+        g.pony_type + ".wrap(GObjectHandle.adopt_borrowed("
+          + ffi_call + "), _runtime)"
+      end
+    else
+      ffi_call
+    end
 
 
   fun _emit_constructor_floating(
@@ -600,13 +690,20 @@ primitive MethodEmitter
     end
     buf.append(")\n    _h = GObjectHandle.adopt_floating(raw)\n")
 
-    // Source `_runtime` from the first GObject parameter (if any).
+    // Source `_runtime` from the first class/interface-kind GObject
+    // parameter (if any). Record-kind parameters carry no runtime — they
+    // wrap a raw pointer directly with no GObjectHandle / PinnedRuntime
+    // pair — so they can't supply one.
     var runtime_source: String = ""
     for p in spec.parameters.values() do
       match p.typ
-      | let _: PtGObject =>
-        runtime_source = p.name + "._runtime_ref()"
-        break
+      | let g: PtGObject =>
+        match g.kind
+        | PtGObjectRecord => None
+        else
+          runtime_source = p.name + ".runtime_ref()"
+          break
+        end
       end
     end
     if runtime_source.size() > 0 then
@@ -694,9 +791,25 @@ primitive MethodEmitter
     end
 
 
+  fun _ffi_return_type(t: PonyType): String val =>
+    """
+    C-side ABI spelling for the *return* position of a `use @` FFI
+    declaration. Differs from the parameter spelling only for utf8:
+    C `const char*` returns are typed as `Pointer[U8]` (ref) so that
+    `String.from_cstring` (which expects `Pointer[U8]` and rejects
+    the weaker `tag`) accepts the value directly. Param positions
+    still need `Pointer[U8] tag` because `.cstring()` produces tag.
+    """
+    match t
+    | let _: PtUtf8 => "Pointer[U8]"
+    else _ffi_type(t)
+    end
+
+
   fun _ffi_type(t: PonyType): String val =>
     """
-    C-side ABI spelling for the `use @` FFI declaration.
+    C-side ABI spelling for the `use @` FFI declaration (parameter
+    position).
     """
     match t
     | PtBool => "Bool"
@@ -723,13 +836,21 @@ primitive MethodEmitter
   fun _marshal_arg(p: ParamSpec val): String val =>
     """
     At a call site, the Pony-side identifier may need wrapping
-    before passing to FFI: `t.cstring()` for utf8, `o._handle().raw()`
-    for GObject, `f.value()` for bitfield, raw passthrough for
-    primitives.
+    before passing to FFI:
+      - utf8:               `t.cstring()`
+      - PtGObject class/iface: `o.handle().raw()`  (GObjectHandle wrapper)
+      - PtGObject record:      `o.raw()`           (raw-pointer wrapper)
+      - bitfield:           `f.value()`
+      - enum:               `e.apply()`
+      - primitive:          raw passthrough
     """
     match p.typ
     | let _: PtUtf8 => p.name + ".cstring()"
-    | let _: PtGObject => p.name + "._handle().raw()"
+    | let g: PtGObject =>
+      match g.kind
+      | PtGObjectRecord => p.name + ".raw()"
+      else p.name + ".handle().raw()"
+      end
     | let _: PtBitfield => p.name + ".value()"
     | let _: PtEnum => p.name + ".apply()"
     else p.name

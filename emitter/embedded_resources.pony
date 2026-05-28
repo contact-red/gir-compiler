@@ -274,7 +274,7 @@ primitive EmbeddedResources
     "  be _dispatch_activate(sender: Pointer[U8] tag) =>\n" +
     "    try\n" +
     "      let handler = _activate_handlers(sender.usize())?\n" +
-    "      let app = GtkApplication._wrap(\n" +
+    "      let app = GtkApplication.wrap(\n" +
     "        GObjectHandle.adopt_borrowed(sender),\n" +
     "        this)\n" +
     "      handler(app)\n" +

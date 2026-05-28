@@ -18,13 +18,30 @@ primitive PtU16    primitive PtI32   primitive PtU32   primitive PtI64
 primitive PtU64    primitive PtF32   primitive PtF64   primitive PtUSize
 primitive PtISize  primitive PtNone
 class val PtUtf8                  // GIR utf8 → Pony String, with .cstring()
+
+// PtGObject kind — distinguishes how the wrapper holds its raw pointer.
+// Class / interface wrappers carry a GObjectHandle (with refcount lifecycle)
+// and a runtime tag; record wrappers carry a raw Pointer[U8] tag directly.
+// The marshaller and return wrapper both need to know which shape to use.
+primitive PtGObjectClass
+primitive PtGObjectInterface
+primitive PtGObjectRecord
+type PtGObjectKind is
+  (PtGObjectClass | PtGObjectInterface | PtGObjectRecord)
+
 class val PtGObject
   let qname: String val           // "Gtk.Application"
   let pony_type: String val       // "GtkApplication"
+  let kind: PtGObjectKind         // class / interface / record
 
-  new val create(qname': String val, pony_type': String val) =>
+  new val create(
+    qname': String val,
+    pony_type': String val,
+    kind': PtGObjectKind)
+  =>
     qname = qname'
     pony_type = pony_type'
+    kind = kind'
 
 class val PtBitfield
   """

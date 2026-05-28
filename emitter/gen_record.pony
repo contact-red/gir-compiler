@@ -12,7 +12,7 @@
 //   class val GLibBytes
 //     let _raw: Pointer[U8] tag
 //
-//     new val _wrap(raw: Pointer[U8] tag) =>
+//     new val wrap(raw: Pointer[U8] tag) =>
 //       _raw = raw
 //
 //     fun raw(): Pointer[U8] tag => _raw
@@ -45,7 +45,7 @@ primitive GenRecord
     buf.append("\n")
     buf.append(DocstringWriter(node.target.doc, translate_ctx, "  "))
     buf.append("  let _raw: Pointer[U8] tag\n\n")
-    buf.append("  new val _wrap(raw': Pointer[U8] tag) =>\n")
+    buf.append("  new val wrap(raw': Pointer[U8] tag) =>\n")
     buf.append("    _raw = raw'\n\n")
     buf.append("  fun raw(): Pointer[U8] tag => _raw\n")
     consume buf
