@@ -1,13 +1,10 @@
 config ?= debug
 
-PACKAGE := gir-compiler
 GET_DEPENDENCIES_WITH := corral fetch
 CLEAN_DEPENDENCIES_WITH := corral clean
 COMPILE_WITH := corral run -- ponyc
 
 BUILD_DIR ?= build/$(config)
-SRC_DIR ?= bin
-binary := $(BUILD_DIR)/$(PACKAGE)
 
 ifdef config
 	ifeq (,$(filter $(config),debug release))
@@ -21,26 +18,40 @@ else
 	PONYC_FLAGS = --debug
 endif
 
-PONYC = $(COMPILE_WITH) $(PONYC_FLAGS) --bin-name $(PACKAGE)
+PONYC = $(COMPILE_WITH) $(PONYC_FLAGS)
 
-SOURCE_FILES := $(shell find gir scanner planner emitter bin -name '*.pony' 2>/dev/null)
+COMPILER_BIN := $(BUILD_DIR)/gir-compiler
+DOCS_BIN := $(BUILD_DIR)/gir-docs
+
+SHARED_SOURCES := $(shell find gir scanner planner emitter doc_translate \
+                     -name '*.pony' 2>/dev/null)
+COMPILER_SOURCES := $(shell find bin -name '*.pony' 2>/dev/null)
+DOCS_SOURCES := $(shell find gir-docs -name '*.pony' 2>/dev/null)
 EMBEDDED_SOURCES := $(shell find embedded -name '*.pony' 2>/dev/null)
 BAKED := emitter/embedded_resources.pony
 
 all: build
 
-build: $(binary)
+build: $(COMPILER_BIN) $(DOCS_BIN)
 
-$(binary): $(SOURCE_FILES) $(BAKED) | $(BUILD_DIR)
+compiler: $(COMPILER_BIN)
+docs: $(DOCS_BIN)
+
+$(COMPILER_BIN): $(SHARED_SOURCES) $(COMPILER_SOURCES) $(BAKED) | $(BUILD_DIR)
 	$(GET_DEPENDENCIES_WITH)
-	$(PONYC) -o $(BUILD_DIR) $(SRC_DIR)
+	$(PONYC) --bin-name gir-compiler -o $(BUILD_DIR) bin
+
+$(DOCS_BIN): $(SHARED_SOURCES) $(DOCS_SOURCES) $(BAKED) | $(BUILD_DIR)
+	$(GET_DEPENDENCIES_WITH)
+	$(PONYC) --bin-name gir-docs -o $(BUILD_DIR) gir-docs
 
 $(BAKED): $(EMBEDDED_SOURCES) tools/bake_embedded.sh
 	tools/bake_embedded.sh > $(BAKED)
 
 test: build
 	@echo "(no automated tests yet — run smoke checks manually)"
-	$(binary) --version
+	$(COMPILER_BIN) --version
+	$(DOCS_BIN) --version
 
 clean:
 	$(CLEAN_DEPENDENCIES_WITH)
@@ -49,4 +60,4 @@ clean:
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
-.PHONY: all build test clean
+.PHONY: all build compiler docs test clean

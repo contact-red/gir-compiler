@@ -75,6 +75,7 @@ primitive GirLoader
     let name = ns_node.getProp("name")
     let version = ns_node.getProp("version")
     let c_prefixes = ns_node.getPropNs(GirNs.c(), "identifier-prefixes")
+    let doc = _load_doc(ns_node)
 
     let classes = recover iso Array[RawGirClass val] end
     let interfaces = recover iso Array[RawGirInterface val] end
@@ -110,7 +111,7 @@ primitive GirLoader
     end
 
     RawGirNamespace(
-      name, version, c_prefixes,
+      name, version, c_prefixes, doc,
       consume classes,
       consume interfaces,
       consume records,
@@ -125,6 +126,7 @@ primitive GirLoader
     let name = class_node.getProp("name")
     let c_type = class_node.getPropNs(GirNs.c(), "type")
     let parent = class_node.getProp("parent")
+    let doc = _load_doc(class_node)
 
     let implements = recover iso Array[String val] end
     let constructors = recover iso Array[RawGirMethod val] end
@@ -153,7 +155,7 @@ primitive GirLoader
     end
 
     RawGirClass(
-      name, c_type, parent,
+      name, c_type, parent, doc,
       consume implements,
       consume constructors,
       consume methods,
@@ -164,6 +166,7 @@ primitive GirLoader
   fun _load_interface(iface_node: Xml2Node): RawGirInterface val ? =>
     let name = iface_node.getProp("name")
     let c_type = iface_node.getPropNs(GirNs.c(), "type")
+    let doc = _load_doc(iface_node)
 
     let prerequisites = recover iso Array[String val] end
     let constructors = recover iso Array[RawGirMethod val] end
@@ -192,7 +195,7 @@ primitive GirLoader
     end
 
     RawGirInterface(
-      name, c_type,
+      name, c_type, doc,
       consume prerequisites,
       consume constructors,
       consume methods,
@@ -205,6 +208,7 @@ primitive GirLoader
     let c_type = rec_node.getPropNs(GirNs.c(), "type")
     let disguised = rec_node.getProp("disguised") == "1"
     let opaque = rec_node.getProp("opaque") == "1"
+    let doc = _load_doc(rec_node)
 
     let constructors = recover iso Array[RawGirMethod val] end
     let methods = recover iso Array[RawGirMethod val] end
@@ -224,7 +228,7 @@ primitive GirLoader
     end
 
     RawGirRecord(
-      name, c_type, disguised, opaque,
+      name, c_type, disguised, opaque, doc,
       consume constructors,
       consume methods)
 
@@ -232,6 +236,7 @@ primitive GirLoader
   fun _load_enumeration(enum_node: Xml2Node): RawGirEnumeration val =>
     let name = enum_node.getProp("name")
     let c_type = enum_node.getPropNs(GirNs.c(), "type")
+    let doc = _load_doc(enum_node)
 
     let members = recover iso Array[RawGirMember val] end
     for child in enum_node.getChildren().values() do
@@ -241,12 +246,13 @@ primitive GirLoader
       end
     end
 
-    RawGirEnumeration(name, c_type, consume members)
+    RawGirEnumeration(name, c_type, doc, consume members)
 
 
   fun _load_bitfield(bf_node: Xml2Node): RawGirBitfield val =>
     let name = bf_node.getProp("name")
     let c_type = bf_node.getPropNs(GirNs.c(), "type")
+    let doc = _load_doc(bf_node)
 
     let members = recover iso Array[RawGirMember val] end
     for child in bf_node.getChildren().values() do
@@ -256,20 +262,22 @@ primitive GirLoader
       end
     end
 
-    RawGirBitfield(name, c_type, consume members)
+    RawGirBitfield(name, c_type, doc, consume members)
 
 
   fun _load_member(m_node: Xml2Node): RawGirMember val =>
     let name = m_node.getProp("name")
     let value = m_node.getProp("value")
     let c_identifier = m_node.getPropNs(GirNs.c(), "identifier")
-    RawGirMember(name, value, c_identifier)
+    let doc = _load_doc(m_node)
+    RawGirMember(name, value, c_identifier, doc)
 
 
   fun _load_callback(cb_node: Xml2Node): RawGirCallback val ? =>
     let name = cb_node.getProp("name")
     let c_type = cb_node.getPropNs(GirNs.c(), "type")
     let throws = cb_node.getProp("throws") == "1"
+    let doc = _load_doc(cb_node)
 
     var return_value: (RawGirReturnValue val | None) = None
     let parameters = recover iso Array[RawGirParameter val] end
@@ -296,14 +304,15 @@ primitive GirLoader
              | None => error
              end
 
-    RawGirCallback(name, c_type, throws, rv, consume parameters)
+    RawGirCallback(name, c_type, throws, doc, rv, consume parameters)
 
 
   fun _load_alias(alias_node: Xml2Node): RawGirAlias val =>
     let name = alias_node.getProp("name")
     let c_type = alias_node.getPropNs(GirNs.c(), "type")
+    let doc = _load_doc(alias_node)
     let target = _find_first_type(alias_node)
-    RawGirAlias(name, c_type, target)
+    RawGirAlias(name, c_type, doc, target)
 
 
   fun _load_property(prop_node: Xml2Node): RawGirProperty val =>
@@ -313,13 +322,15 @@ primitive GirLoader
     let construct' = prop_node.getProp("construct") == "1"
     let construct_only = prop_node.getProp("construct-only") == "1"
     let transfer = prop_node.getProp("transfer-ownership")
+    let doc = _load_doc(prop_node)
     let typ = _find_first_type(prop_node)
     RawGirProperty(name, typ, readable, writable, construct',
-                   construct_only, transfer)
+                   construct_only, transfer, doc)
 
 
   fun _load_signal(sig_node: Xml2Node): RawGirSignal val =>
     let name = sig_node.getProp("name")
+    let doc = _load_doc(sig_node)
 
     var return_value: (RawGirReturnValue val | None) = None
     let parameters = recover iso Array[RawGirParameter val] end
@@ -345,10 +356,10 @@ primitive GirLoader
              | let v: RawGirReturnValue val => v
              // Signals without explicit <return-value> are void.
              | None =>
-                 RawGirReturnValue(RawGirType("none", "void"), "none", false)
+                 RawGirReturnValue(RawGirType("none", "void"), "none", false, "")
              end
 
-    RawGirSignal(name, rv, consume parameters)
+    RawGirSignal(name, doc, rv, consume parameters)
 
 
   fun _load_method(
@@ -359,6 +370,7 @@ primitive GirLoader
     let name = method_node.getProp("name")
     let c_identifier = method_node.getPropNs(GirNs.c(), "identifier")
     let throws = method_node.getProp("throws") == "1"
+    let doc = _load_doc(method_node)
 
     var return_value: (RawGirReturnValue val | None) = None
     let parameters = recover iso Array[RawGirParameter val] end
@@ -385,22 +397,41 @@ primitive GirLoader
              | None => error
              end
 
-    RawGirMethod(kind, name, c_identifier, throws, rv, consume parameters)
+    RawGirMethod(kind, name, c_identifier, throws, doc, rv, consume parameters)
 
 
   fun _load_return_value(rv_node: Xml2Node): RawGirReturnValue val =>
     let transfer = rv_node.getProp("transfer-ownership")
     let nullable = rv_node.getProp("nullable") == "1"
+    let doc = _load_doc(rv_node)
     let typ = _find_first_type(rv_node)
-    RawGirReturnValue(typ, transfer, nullable)
+    RawGirReturnValue(typ, transfer, nullable, doc)
 
 
   fun _load_parameter(param_node: Xml2Node): RawGirParameter val =>
     let name = param_node.getProp("name")
     let transfer = param_node.getProp("transfer-ownership")
     let nullable = param_node.getProp("nullable") == "1"
+    let doc = _load_doc(param_node)
     let typ = _find_first_type(param_node)
-    RawGirParameter(name, typ, transfer, nullable)
+    RawGirParameter(name, typ, transfer, nullable, doc)
+
+
+  fun _load_doc(node: Xml2Node): String val =>
+    """
+    Return the verbatim text content of the <doc> child of `node`, or
+    an empty string if `node` has no <doc> child. The text is the
+    entity-decoded source from the GIR file (libxml2 handles entity
+    decoding when extracting node content); markup translation
+    happens later in the `doc_translate` package.
+    """
+    for child in node.getChildren().values() do
+      (let cns, let clocal) = child.qname()
+      if (cns == GirNs.core()) and (clocal == "doc") then
+        return child.getContent()
+      end
+    end
+    ""
 
 
   fun _find_first_type(parent: Xml2Node): RawGirType val =>

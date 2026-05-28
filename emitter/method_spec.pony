@@ -18,13 +18,30 @@ primitive PtU16    primitive PtI32   primitive PtU32   primitive PtI64
 primitive PtU64    primitive PtF32   primitive PtF64   primitive PtUSize
 primitive PtISize  primitive PtNone
 class val PtUtf8                  // GIR utf8 → Pony String, with .cstring()
+
+// PtGObject kind — distinguishes how the wrapper holds its raw pointer.
+// Class / interface wrappers carry a GObjectHandle (with refcount lifecycle)
+// and a runtime tag; record wrappers carry a raw Pointer[U8] tag directly.
+// The marshaller and return wrapper both need to know which shape to use.
+primitive PtGObjectClass
+primitive PtGObjectInterface
+primitive PtGObjectRecord
+type PtGObjectKind is
+  (PtGObjectClass | PtGObjectInterface | PtGObjectRecord)
+
 class val PtGObject
   let qname: String val           // "Gtk.Application"
   let pony_type: String val       // "GtkApplication"
+  let kind: PtGObjectKind         // class / interface / record
 
-  new val create(qname': String val, pony_type': String val) =>
+  new val create(
+    qname': String val,
+    pony_type': String val,
+    kind': PtGObjectKind)
+  =>
     qname = qname'
     pony_type = pony_type'
+    kind = kind'
 
 class val PtBitfield
   """
@@ -161,6 +178,7 @@ class val MethodSpec
   let parameters: Array[ParamSpec val] val
   let return_type: PonyType
   let shape: MethodShape
+  let doc: String val             // raw GIR <doc> text, empty if absent
 
   new val create(
     pony_name': String val,
@@ -170,7 +188,8 @@ class val MethodSpec
     inherited_from': (String val | None),
     parameters': Array[ParamSpec val] val,
     return_type': PonyType,
-    shape': MethodShape)
+    shape': MethodShape,
+    doc': String val)
   =>
     pony_name = pony_name'
     c_identifier = c_identifier'
@@ -180,6 +199,7 @@ class val MethodSpec
     parameters = parameters'
     return_type = return_type'
     shape = shape'
+    doc = doc'
 
 
 class val SkippedSpec
@@ -194,15 +214,18 @@ class val SkippedSpec
   let method_name: String val
   let receiver_qname: String val
   let reason: UnemittableReason
+  let doc: String val             // raw GIR <doc>, empty if absent
 
   new val create(
     method_name': String val,
     receiver_qname': String val,
-    reason': UnemittableReason)
+    reason': UnemittableReason,
+    doc': String val)
   =>
     method_name = method_name'
     receiver_qname = receiver_qname'
     reason = reason'
+    doc = doc'
 
 
 type MethodOutcome is (MethodSpec val | SkippedSpec val)

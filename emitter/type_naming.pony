@@ -9,14 +9,26 @@
 // And for GIR primitives (the "built-in" names like gint, guint,
 // utf8, gboolean...), we map directly to Pony built-in types so
 // generated code doesn't have to wrap or convert.
+//
+// Identifier-level munging (parameter and method names, reserved-
+// word avoidance) lives in `gir/PonyIdent` so both the emitter and
+// the doc translator route through one implementation.
+
+use "../gir"
 
 primitive TypeNaming
-  fun pony_type_name(qname: String): String val =>
+  fun pony_type_name(c_type: String, qname: String): String val =>
     """
-    "Gtk.Application" -> "GtkApplication". Strips the dot.
-    Returns the qname unchanged if it has no dot (shouldn't happen
-    for validator-built qnames).
+    The Pony spelling for a GIR type. Uses the GIR-declared `c:type`
+    directly when present — so e.g. `Gio.Application` (c:type=GApplication)
+    renders as `GApplication`, not `GioApplication`. This keeps the
+    generated names in lockstep with the actual C API and with what
+    pony-doc shows on the documentation page.
+
+    Falls back to the namespace-prepended form when the GIR didn't
+    declare a c:type (rare, defensive).
     """
+    if c_type.size() > 0 then return c_type end
     try
       let idx = qname.find(".")?
       let ns: String val = qname.substring(0, idx)
@@ -25,6 +37,23 @@ primitive TypeNaming
     else
       qname.string()
     end
+
+  fun pony_name_for_node(node: GirNodeRef, fallback_qname: String): String val =>
+    """
+    Read the c:type off a resolved GIR node and route it through
+    `pony_type_name`. Centralizes the per-kind c_type extraction so
+    callers don't repeat the match arms.
+    """
+    let c_type = match node
+                 | let c: GirNodeClass => c.target.c_type
+                 | let i: GirNodeInterface => i.target.c_type
+                 | let r: GirNodeRecord => r.target.c_type
+                 | let e: GirNodeEnumeration => e.target.c_type
+                 | let b: GirNodeBitfield => b.target.c_type
+                 | let cb: GirNodeCallback => cb.target.c_type
+                 | let a: GirNodeAlias => a.target.c_type
+                 end
+    pony_type_name(c_type, fallback_qname)
 
   fun pony_type_from_namespaced_ref(
     gir_name: String,
@@ -66,53 +95,12 @@ primitive TypeNaming
 
   fun safe_param_name(gir_name: String): String val =>
     """
-    GIR parameter names sometimes collide with Pony reserved words
-    (`error`, `object`, `type`, `match`, ...), use kebab-case, or
-    have trailing underscores (Pony forbids those). Returns a
-    Pony-legal identifier:
-      - Hyphens become underscores
-      - Trailing underscores are stripped
-      - Reserved words get a prime suffix ("error" -> "error'")
-      - Empty input becomes "arg"
+    Pony-legal parameter name. Delegates to PonyIdent.safe_param.
+    Reserved-word collisions get the prime suffix ("error" ->
+    "error'"); primes are legal on parameter and variable bindings
+    but NOT on method names (see PonyIdent.safe_method for those).
     """
-    if gir_name.size() == 0 then return "arg" end
-    let normalized = recover iso String end
-    for c in gir_name.values() do
-      if c == '-' then normalized.push('_') else normalized.push(c) end
-    end
-    var n: String val = consume normalized
-    // Strip trailing underscores — Pony disallows them.
-    while (n.size() > 0) and
-      try (n(n.size() - 1)? == '_') else false end
-    do
-      n = n.substring(0, (n.size() - 1).isize())
-    end
-    if n.size() == 0 then return "arg" end
-    if _is_reserved(n) then n + "'" else n end
-
-
-  fun _is_reserved(s: String): Bool =>
-    """
-    Pony reserved words that conflict with our param-name emission.
-    Not exhaustive — just the ones we've hit. Add more as new
-    collisions surface from real GIR data.
-    """
-    match s
-    | "actor" | "class" | "primitive" | "interface" | "trait"
-    | "type" | "struct" | "object" | "lambda" | "this"
-    | "is" | "isnt" | "or" | "and" | "xor" | "not"
-    | "if" | "then" | "else" | "elseif" | "end"
-    | "while" | "do" | "for" | "in" | "repeat" | "until"
-    | "match" | "as" | "var" | "let" | "embed" | "consume"
-    | "error" | "recover" | "compile_error"
-    | "try" | "with" | "where"
-    | "iso" | "trn" | "ref" | "val" | "box" | "tag"
-    | "true" | "false" | "use" | "new" | "fun" | "be"
-    | "return" | "break" | "continue"
-    | "addressof" | "digestof"
-    => true
-    else false
-    end
+    PonyIdent.safe_param(gir_name)
 
 
   fun _primitive_mapping(gir_name: String): (String val | None) =>

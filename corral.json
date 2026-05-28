@@ -3,7 +3,8 @@
     "gir",
     "scanner",
     "planner",
-    "emitter"
+    "emitter",
+    "doc_translate"
   ],
   "deps": [
     {

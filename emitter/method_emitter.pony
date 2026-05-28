@@ -15,6 +15,8 @@
 //       MethodOutcome
 //     called once per constructor on every type in T
 
+use "collections"
+use "../doc_translate"
 use "../gir"
 
 
@@ -22,24 +24,30 @@ primitive MethodEmitter
   fun classify_method(
     receiver_qname: String val,
     method_name: String val,
-    model: GirModel val)
+    model: GirModel val,
+    class_member_names: (Set[String val] val | None) = None)
     : MethodOutcome
   =>
     """
     Find the method in the receiver type's ancestry; classify its
     shape. Falls through to `_classify_signal` if a connect_X method
     name doesn't match any real method.
+
+    `class_member_names` is the set of all method / field names that
+    will appear at the same level in the generated class. Parameter
+    names that would shadow any of those get a prime suffix to
+    avoid Pony's `can't reuse name 'X'` rejection.
     """
     match _find_in_ancestry(receiver_qname, method_name, model)
     | (let m: RawGirMethod val,
         let owner_qname: String val,
         let owner_ns: String val) =>
-      _wrap_skip(receiver_qname, method_name,
+      _wrap_skip(receiver_qname, method_name, m.doc,
         _classify_raw(m, receiver_qname, owner_qname, owner_ns,
-          method_name, model))
+          method_name, model, class_member_names))
     else
       // Not a method — maybe a connect_X for a signal.
-      _wrap_skip(receiver_qname, method_name,
+      _wrap_skip(receiver_qname, method_name, "",
         _classify_signal(receiver_qname, method_name, model))
     end
 
@@ -47,6 +55,7 @@ primitive MethodEmitter
   fun _wrap_skip(
     receiver_qname: String val,
     method_name: String val,
+    doc: String val,
     outcome: (MethodSpec val | UnemittableReason))
     : MethodOutcome
   =>
@@ -54,12 +63,19 @@ primitive MethodEmitter
     classify_raw / classify_signal return the inner (MethodSpec |
     UnemittableReason). Wrap the reason side with method/receiver
     context so the emitter can produce a compile_error stub keyed
-    by name.
+    by name. `doc` carries any GIR <doc> text we want preserved on
+    the skip stub so docs-mode generation can still show users what
+    the missing method does.
+
+    The method name is routed through PonyIdent.safe_method before
+    reaching SkippedSpec — without this, skip stubs for reserved-
+    word method names (e.g. `fun ref error()`) emit invalid Pony
+    source, same way MethodSpec names had to be munged.
     """
     match outcome
     | let s: MethodSpec val => s
     | let r: UnemittableReason =>
-      SkippedSpec(method_name, receiver_qname, r)
+      SkippedSpec(PonyIdent.safe_method(method_name), receiver_qname, r, doc)
     end
 
 
@@ -67,7 +83,8 @@ primitive MethodEmitter
     receiver_qname: String val,
     receiver_ns: String val,
     raw_ctor: RawGirMethod val,
-    model: GirModel val)
+    model: GirModel val,
+    class_member_names: (Set[String val] val | None) = None)
     : MethodOutcome
   =>
     """
@@ -76,15 +93,45 @@ primitive MethodEmitter
     we sink immediately via GObjectHandle.adopt_floating). Records
     and types not descending from GInitiallyUnowned are
     UnemittableUnsupportedShape until follow-up work.
+
+    The Pony constructor name is derived from the GIR `name`
+    attribute — see `constructor_pony_name`.
     """
-    _wrap_skip(receiver_qname, "create",
+    let pony_name = constructor_pony_name(raw_ctor.name)
+    _wrap_skip(receiver_qname, pony_name, raw_ctor.doc,
       _classify_raw(
         raw_ctor,
         receiver_qname,
         receiver_qname,
         receiver_ns,
-        "create",
-        model))
+        pony_name,
+        model,
+        class_member_names))
+
+
+  fun constructor_pony_name(raw_name: String): String val =>
+    """
+    Map a GIR constructor name onto its Pony slot:
+
+      "new"             -> "create"  (the conventional Pony default)
+      "new_with_label"  -> "with_label"  (strip the `new_` prefix)
+      "new_from_file"   -> "from_file"
+      "newv"            -> "newv"  (no underscore, used verbatim)
+
+    This gives GIR classes that declare multiple constructors
+    (gtk_button_new + gtk_button_new_with_label +
+    gtk_button_new_with_mnemonic) distinct Pony constructor slots.
+    Without it they all collapse onto `create` and the second
+    emission fails with `can't reuse name 'create'`.
+
+    Public so gen_class can compute the same names up front when
+    building the class-member-names set for parameter disambiguation.
+    """
+    if raw_name == "new" then return "create" end
+    if (raw_name.size() > 4) and raw_name.at("new_", 0) then
+      return raw_name.substring(4)
+    end
+    raw_name.string()
 
 
   // ---- Classification helpers ----
@@ -95,19 +142,32 @@ primitive MethodEmitter
     owner_qname: String val,
     owner_ns: String val,
     pony_name: String val,
-    model: GirModel val)
+    model: GirModel val,
+    class_member_names: (Set[String val] val | None) = None)
     : (MethodSpec val | UnemittableReason)
   =>
+    """
+    Build a MethodSpec from a raw GIR method. The
+    `class_member_names` set (when supplied by gen_class) carries the
+    names of every method and field that will live at the same scope
+    in the generated class. Any parameter name that matches one of
+    those gets a prime suffix so we don't emit `can't reuse name 'X'`
+    — Pony rejects parameter names that shadow class-member names.
+    """
+    let safe_method_name = PonyIdent.safe_method(pony_name)
     // Build params + return; bail early on any unrepresentable type.
     let params = recover iso Array[ParamSpec val] end
     for p in m.parameters.values() do
       let loc: String val = "parameter `" + p.name + "`"
       match _pony_type_for(p.typ.name, owner_ns, loc, model)
       | let t: PonyType =>
-        params.push(ParamSpec(
-          TypeNaming.safe_param_name(p.name),
-          t,
-          p.typ.name))
+        let safe_param = TypeNaming.safe_param_name(p.name)
+        let final_param =
+          if _name_clashes(safe_param, safe_method_name, class_member_names)
+          then safe_param + "'"
+          else safe_param
+          end
+        params.push(ParamSpec(final_param, t, p.typ.name))
       | let u: UnemittableReason => return u
       end
     end
@@ -118,6 +178,50 @@ primitive MethodEmitter
       | let t: PonyType => t
       | let u: UnemittableReason => return u
       end
+
+    // We can wrap most return types, but PtBitfield and PtEnum need a
+    // from-integer constructor we haven't built yet — emitting a
+    // declared `: GtkOrientation` body that returns the raw I32 would
+    // fail to type-check. Constructors are exempt because their
+    // ShapeConstructorFloating body builds the receiver directly, not
+    // by wrapping a return value — but they have their own check
+    // below (they need a runtime source).
+    match m.kind
+    | RawGirMethodKindConstructor =>
+      // Constructors initialize `_runtime` by reading `runtime_ref()`
+      // off the first class/interface-kind GObject parameter. If no
+      // such parameter exists there's no way to populate the field
+      // and ponyc rejects the class with "field left undefined".
+      // Skip the constructor in that case — the type can still be
+      // created via methods that return it on other instances.
+      // Resolve each GIR parameter type freshly here rather than
+      // touching `params` (which is iso and would need a destructive
+      // read to inspect).
+      var has_runtime_source: Bool = false
+      for p in m.parameters.values() do
+        match _pony_type_for(p.typ.name, owner_ns, "constructor param", model)
+        | let g: PtGObject =>
+          match g.kind
+          | PtGObjectRecord => None
+          else
+            has_runtime_source = true
+            break
+          end
+        end
+      end
+      if not has_runtime_source then
+        return UnemittableUnsupportedShape(
+          "constructor has no class/interface GObject parameter to "
+          + "source _runtime from")
+      end
+    else
+      match return_type
+      | let _: PtBitfield => return UnemittableUnsupportedShape(
+          "method returns a bitfield (no from-integer wrap yet)")
+      | let _: PtEnum => return UnemittableUnsupportedShape(
+          "method returns an enum (no from-integer wrap yet)")
+      end
+    end
 
     // Pick body shape.
     let shape: MethodShape =
@@ -131,14 +235,15 @@ primitive MethodEmitter
       end
 
     MethodSpec(
-      pony_name,
+      safe_method_name,
       m.c_identifier,
       LibraryFor(owner_ns),
       receiver_qname,
       if owner_qname == receiver_qname then None else owner_qname end,
       consume params,
       return_type,
-      shape)
+      shape,
+      m.doc)
 
 
   fun _pony_type_for(
@@ -155,6 +260,15 @@ primitive MethodEmitter
     kinds as UnemittableUnknownType (no PtEnum yet — adds in a
     follow-up).
     """
+    // GIR array sentinel — emitted by the loader as "array<inner>"
+    // when GIR wraps a <type> in <array>. We don't have a v1 array
+    // shape yet (the FFI marshalling is non-trivial), so any method
+    // with an array parameter or return type skips. The detail
+    // message keeps the inner type visible for triage.
+    if gir_name.at("array<", 0) then
+      return UnemittableUnsupportedShape(
+        gir_name + " not yet supported (" + location + ")")
+    end
     match gir_name
     | "none" => PtNone
     | "gboolean" => PtBool
@@ -171,27 +285,41 @@ primitive MethodEmitter
     | "gsize" => PtUSize
     | "gssize" => PtISize
     | "utf8" => PtUtf8
+    | "varargs" => UnemittableVariadic
     else
       // Object reference — resolve via the model to distinguish
-      // bitfields (PtBitfield) from object types (PtGObject).
-      match _resolve_object_type(gir_name, owner_ns)
-      | (let qname: String val, let pony_ty: String val) =>
+      // bitfields (PtBitfield) from object types (PtGObject). The
+      // pony-side type name comes from the resolved node's c:type
+      // (e.g. `GApplication`, not `GioApplication`) via
+      // TypeNaming.pony_name_for_node.
+      match _resolve_object_qname(gir_name, owner_ns)
+      | let qname: String val =>
         match model.resolve(qname)
-        | let _: GirNodeBitfield => PtBitfield(qname, pony_ty)
-        | let _: GirNodeEnumeration => PtEnum(qname, pony_ty)
-        | let _: GirNodeClass => PtGObject(qname, pony_ty)
-        | let _: GirNodeInterface => PtGObject(qname, pony_ty)
-        | let _: GirNodeRecord => PtGObject(qname, pony_ty)
-        | None =>
-          // Not in the model — could be a type from an unloaded
-          // namespace; treat as opaque GObject pointer so the FFI
-          // still works (caller will see a generated marker type
-          // they can interact with via raw pointer if needed).
-          PtGObject(qname, pony_ty)
+        | let b: GirNodeBitfield =>
+          let canon = _canonical_qname(b.target.c_type, qname, model)
+          PtBitfield(canon, TypeNaming.pony_name_for_node(b, canon))
+        | let e: GirNodeEnumeration =>
+          let canon = _canonical_qname(e.target.c_type, qname, model)
+          PtEnum(canon, TypeNaming.pony_name_for_node(e, canon))
+        | let c: GirNodeClass =>
+          let canon = _canonical_qname(c.target.c_type, qname, model)
+          PtGObject(canon, TypeNaming.pony_name_for_node(c, canon),
+            PtGObjectClass)
+        | let i: GirNodeInterface =>
+          let canon = _canonical_qname(i.target.c_type, qname, model)
+          PtGObject(canon, TypeNaming.pony_name_for_node(i, canon),
+            PtGObjectInterface)
+        | let r: GirNodeRecord =>
+          let canon = _canonical_qname(r.target.c_type, qname, model)
+          PtGObject(canon, TypeNaming.pony_name_for_node(r, canon),
+            PtGObjectRecord)
         else
-          // Callbacks and aliases — don't yet have a v1 type
-          // spelling. Surface as a skip rather than emit broken
-          // source.
+          // Includes None (type lives in an unloaded namespace) and
+          // callback / alias kinds we don't yet have a v1 type
+          // spelling for. Either way, the method that uses this type
+          // can't be represented — skip it entirely rather than emit
+          // broken source or a use directive for a non-existent
+          // package.
           UnemittableUnknownType(location, gir_name)
         end
       else
@@ -200,27 +328,45 @@ primitive MethodEmitter
     end
 
 
-  fun _resolve_object_type(
-    gir_name: String,
-    owner_ns: String)
-    : ((String val, String val) | None)
+  fun _canonical_qname(
+    c_type: String val,
+    fallback: String val,
+    model: GirModel val)
+    : String val
   =>
     """
-    "Window" + owner_ns="Gtk" → ("Gtk.Window", "GtkWindow")
-    "Gio.Application" → ("Gio.Application", "GioApplication")
+    If the resolved node's c:type is also declared in another loaded
+    namespace, route to the canonical (first-registered) declaration
+    via the model's by_c_type index. Otherwise return the literal
+    qname we already resolved. Without this, two declarations of the
+    same c:type produce two PonyType instances pointing at two
+    different packages, and the emitter would import the wrong one.
+    """
+    if c_type.size() == 0 then return fallback end
+    match model.resolve_by_c_type(c_type)
+    | let n: GirNodeRef => NodeHelpers.qname_of(n)
+    | None => fallback
+    end
+
+
+  fun _resolve_object_qname(
+    gir_name: String,
+    owner_ns: String)
+    : (String val | None)
+  =>
+    """
+    Normalize a GIR type reference to its qname:
+      "Window" + owner_ns="Gtk" → "Gtk.Window"
+      "Gio.Application"         → "Gio.Application"
+    Returns None for empty input. The caller looks up the qname in
+    the model and reads c:type off the resolved node to produce the
+    pony-side type spelling.
     """
     if gir_name.size() == 0 then return None end
     if gir_name.contains(".") then
-      try
-        let idx = gir_name.find(".")?
-        let ns: String val = gir_name.substring(0, idx)
-        let local: String val = gir_name.substring(idx + 1)
-        return (gir_name, ns + local)
-      end
-      None
-    else
-      (owner_ns + "." + gir_name, owner_ns + gir_name)
+      return gir_name
     end
+    owner_ns + "." + gir_name
 
 
   fun _find_in_ancestry(
@@ -338,7 +484,9 @@ primitive MethodEmitter
       None,
       recover val Array[ParamSpec val] end,
       PtNone,
-      ShapeSignalConnect)
+      ShapeSignalConnect,
+      "")                           // signal-connect helpers have no GIR doc
+
 
 
   fun _signal_exists_in_ancestry(
@@ -371,16 +519,26 @@ primitive MethodEmitter
 
   // ---- Emission ----
 
-  fun emit(outcome: MethodOutcome): String val =>
+  fun emit(
+    outcome: MethodOutcome,
+    translate_ctx: (TranslateContext val | None) = None)
+    : String val
+  =>
+    """
+    Methods that classified as a SkippedSpec emit nothing at all.
+    If a GIR signature can't be represented in Pony, the binding
+    simply doesn't expose it — no compile_error stub, no
+    placeholder, no doc entry.
+    """
     match outcome
     | let spec: MethodSpec val =>
       match spec.shape
-      | ShapeTrivialVoid         => _emit_trivial_void(spec)
-      | ShapeTrivialReturn       => _emit_trivial_return(spec)
-      | ShapeConstructorFloating => _emit_constructor_floating(spec)
-      | ShapeSignalConnect       => _emit_signal_connect(spec)
+      | ShapeTrivialVoid         => _emit_trivial_void(spec, translate_ctx)
+      | ShapeTrivialReturn       => _emit_trivial_return(spec, translate_ctx)
+      | ShapeConstructorFloating => _emit_constructor_floating(spec, translate_ctx)
+      | ShapeSignalConnect       => _emit_signal_connect(spec, translate_ctx)
       end
-    | let s: SkippedSpec val => _emit_skip_stub(s)
+    | let _: SkippedSpec val => ""
     end
 
 
@@ -396,7 +554,7 @@ primitive MethodEmitter
     buf.append("use @")
     buf.append(spec.c_identifier)
     buf.append("[")
-    buf.append(_ffi_type(spec.return_type))
+    buf.append(_ffi_return_type(spec.return_type))
     buf.append("](")
 
     var first: Bool = true
@@ -418,13 +576,19 @@ primitive MethodEmitter
     consume buf
 
 
-  fun _emit_trivial_void(spec: MethodSpec val): String val =>
+  fun _emit_trivial_void(
+    spec: MethodSpec val,
+    translate_ctx: (TranslateContext val | None))
+    : String val
+  =>
     let buf = recover iso String end
     buf.append("\n  fun ref ")
     buf.append(spec.pony_name)
     buf.append("(")
     buf.append(_pony_params_str(spec.parameters))
-    buf.append(") =>\n    @")
+    buf.append(") =>\n")
+    buf.append(DocstringWriter(spec.doc, translate_ctx, "    "))
+    buf.append("    @")
     buf.append(spec.c_identifier)
     buf.append("(_h.raw()")
     for p in spec.parameters.values() do
@@ -435,7 +599,11 @@ primitive MethodEmitter
     consume buf
 
 
-  fun _emit_trivial_return(spec: MethodSpec val): String val =>
+  fun _emit_trivial_return(
+    spec: MethodSpec val,
+    translate_ctx: (TranslateContext val | None))
+    : String val
+  =>
     let buf = recover iso String end
     buf.append("\n  fun ref ")
     buf.append(spec.pony_name)
@@ -443,22 +611,75 @@ primitive MethodEmitter
     buf.append(_pony_params_str(spec.parameters))
     buf.append("): ")
     buf.append(_pony_type_decl(spec.return_type))
-    buf.append(" =>\n    @")
-    buf.append(spec.c_identifier)
-    buf.append("(_h.raw()")
-    for p in spec.parameters.values() do
-      buf.append(", ")
-      buf.append(_marshal_arg(p))
+    buf.append(" =>\n")
+    buf.append(DocstringWriter(spec.doc, translate_ctx, "    "))
+    // Build the FFI call expression `@symbol(_h.raw(), <marshalled args>)`
+    // separately so the return wrapper can place it inside the right
+    // wrapping form.
+    let ffi_call = recover val
+      let c = String
+      c.append("@")
+      c.append(spec.c_identifier)
+      c.append("(_h.raw()")
+      for p in spec.parameters.values() do
+        c.append(", ")
+        c.append(_marshal_arg(p))
+      end
+      c.append(")")
+      c
     end
-    buf.append(")\n")
+    buf.append("    ")
+    buf.append(_wrap_return(spec.return_type, ffi_call))
+    buf.append("\n")
     consume buf
 
 
-  fun _emit_constructor_floating(spec: MethodSpec val): String val =>
+  fun _wrap_return(t: PonyType, ffi_call: String val): String val =>
+    """
+    Convert a raw FFI result into a value of the declared Pony return
+    type. Numeric primitives pass through unchanged; utf8 boxes via
+    String.from_cstring; PtGObject class/interface calls
+    <Type>.wrap(GObjectHandle.adopt_borrowed(<raw>), _runtime); PtGObject
+    record calls <Type>.wrap(<raw>) — record wrappers take a raw
+    pointer directly. (PtBitfield and PtEnum returns are intercepted
+    at classification time with UnemittableUnsupportedShape — we don't
+    have a from-integer constructor for those shapes yet.)
+    """
+    match t
+    | let _: PtUtf8 =>
+      // String.from_cstring's body type is `String ref^`, which
+      // isn't a subtype of `val`. A `recover val` block would lift
+      // the cap, but it can't read non-sendable fields (we'd need
+      // `_h.raw()` inside the recover). `.clone()` returns
+      // `String iso^`, which `val` accepts, and the cost is a
+      // single buffer copy.
+      "String.from_cstring(" + ffi_call + ").clone()"
+    | let g: PtGObject =>
+      match g.kind
+      | PtGObjectRecord =>
+        g.pony_type + ".wrap(" + ffi_call + ")"
+      else
+        g.pony_type + ".wrap(GObjectHandle.adopt_borrowed("
+          + ffi_call + "), _runtime)"
+      end
+    else
+      ffi_call
+    end
+
+
+  fun _emit_constructor_floating(
+    spec: MethodSpec val,
+    translate_ctx: (TranslateContext val | None))
+    : String val
+  =>
     let buf = recover iso String end
-    buf.append("\n  new create(")
+    buf.append("\n  new ")
+    buf.append(spec.pony_name)
+    buf.append("(")
     buf.append(_pony_params_str(spec.parameters))
-    buf.append(") =>\n    let raw = @")
+    buf.append(") =>\n")
+    buf.append(DocstringWriter(spec.doc, translate_ctx, "    "))
+    buf.append("    let raw = @")
     buf.append(spec.c_identifier)
     buf.append("(")
     var first: Bool = true
@@ -469,13 +690,20 @@ primitive MethodEmitter
     end
     buf.append(")\n    _h = GObjectHandle.adopt_floating(raw)\n")
 
-    // Source `_runtime` from the first GObject parameter (if any).
+    // Source `_runtime` from the first class/interface-kind GObject
+    // parameter (if any). Record-kind parameters carry no runtime — they
+    // wrap a raw pointer directly with no GObjectHandle / PinnedRuntime
+    // pair — so they can't supply one.
     var runtime_source: String = ""
     for p in spec.parameters.values() do
       match p.typ
-      | let _: PtGObject =>
-        runtime_source = p.name + "._runtime_ref()"
-        break
+      | let g: PtGObject =>
+        match g.kind
+        | PtGObjectRecord => None
+        else
+          runtime_source = p.name + ".runtime_ref()"
+          break
+        end
       end
     end
     if runtime_source.size() > 0 then
@@ -486,53 +714,39 @@ primitive MethodEmitter
     consume buf
 
 
-  fun _emit_signal_connect(spec: MethodSpec val): String val =>
-    // For v1 only `connect_close_request` is wired.
+  fun _emit_signal_connect(
+    spec: MethodSpec val,
+    translate_ctx: (TranslateContext val | None))
+    : String val
+  =>
+    // For v1 only `connect_close_request` is wired. The call goes
+    // through the PinnedRuntime interface (in gobject_runtime), so
+    // every generated package — including gobject, gio, glib — can
+    // declare `_runtime: PinnedRuntime tag` without importing gtk.
     let buf = recover iso String end
     buf.append("\n  fun ref ")
     buf.append(spec.pony_name)
     buf.append("(handler: CloseRequestHandler) =>\n")
-    buf.append("    _runtime._register_close_request(_h.raw(), handler)\n")
+    buf.append(DocstringWriter(spec.doc, translate_ctx, "    "))
+    buf.append("    _runtime.register_close_request(_h.raw(), handler)\n")
     consume buf
 
 
-  fun _emit_skip_stub(s: SkippedSpec val): String val =>
+  fun _name_clashes(
+    candidate: String val,
+    self_name: String val,
+    class_member_names: (Set[String val] val | None))
+    : Bool
+  =>
     """
-    Emit a method declaration that fails at the call site with a
-    useful compile_error message. The body sits inside `ifdef linux
-    or windows or osx` so Pony's tree-shaker elides it unless the
-    method is actually called (verified empirically — uncalled
-    methods don't trigger their compile_error). Wrong-arity calls
-    will get the ordinary `wrong number of arguments` error from
-    ponyc.
+    True if `candidate` would shadow the enclosing method (`self_name`)
+    or any other class-level member. Used to decide whether a
+    parameter name needs the prime suffix.
     """
-    let buf = recover iso String end
-    buf.append("\n  fun ref ")
-    buf.append(s.method_name)
-    buf.append("() =>\n")
-    buf.append("    ifdef linux or windows or osx then\n")
-    buf.append("      compile_error \"")
-    buf.append(s.receiver_qname)
-    buf.append(".")
-    buf.append(s.method_name)
-    buf.append(": ")
-    buf.append(_describe(s.reason))
-    buf.append("\"\n")
-    buf.append("    end\n")
-    consume buf
-
-
-  fun _describe(u: UnemittableReason): String val =>
-    match u
-    | let _: UnemittableVariadic => "variadic"
-    | let _: UnemittableUnintrospectable => "introspectable=0"
-    | let _: UnemittableOutParamUnsupported => "out parameter not yet supported"
-    | let x: UnemittableUnknownType val =>
-      "unknown GIR type `" + x.gir_name + "` (" + x.location + ")"
-    | let x: UnemittableUnsupportedShape val =>
-      "unsupported shape: " + x.detail
-    | let x: UnemittableNotFound val =>
-      "no method `" + x.method_name + "` found in ancestry"
+    if candidate == self_name then return true end
+    match class_member_names
+    | let s: Set[String val] val => s.contains(candidate)
+    | None => false
     end
 
 
@@ -577,9 +791,25 @@ primitive MethodEmitter
     end
 
 
+  fun _ffi_return_type(t: PonyType): String val =>
+    """
+    C-side ABI spelling for the *return* position of a `use @` FFI
+    declaration. Differs from the parameter spelling only for utf8:
+    C `const char*` returns are typed as `Pointer[U8]` (ref) so that
+    `String.from_cstring` (which expects `Pointer[U8]` and rejects
+    the weaker `tag`) accepts the value directly. Param positions
+    still need `Pointer[U8] tag` because `.cstring()` produces tag.
+    """
+    match t
+    | let _: PtUtf8 => "Pointer[U8]"
+    else _ffi_type(t)
+    end
+
+
   fun _ffi_type(t: PonyType): String val =>
     """
-    C-side ABI spelling for the `use @` FFI declaration.
+    C-side ABI spelling for the `use @` FFI declaration (parameter
+    position).
     """
     match t
     | PtBool => "Bool"
@@ -606,13 +836,21 @@ primitive MethodEmitter
   fun _marshal_arg(p: ParamSpec val): String val =>
     """
     At a call site, the Pony-side identifier may need wrapping
-    before passing to FFI: `t.cstring()` for utf8, `o._handle().raw()`
-    for GObject, `f.value()` for bitfield, raw passthrough for
-    primitives.
+    before passing to FFI:
+      - utf8:               `t.cstring()`
+      - PtGObject class/iface: `o.handle().raw()`  (GObjectHandle wrapper)
+      - PtGObject record:      `o.raw()`           (raw-pointer wrapper)
+      - bitfield:           `f.value()`
+      - enum:               `e.apply()`
+      - primitive:          raw passthrough
     """
     match p.typ
     | let _: PtUtf8 => p.name + ".cstring()"
-    | let _: PtGObject => p.name + "._handle().raw()"
+    | let g: PtGObject =>
+      match g.kind
+      | PtGObjectRecord => p.name + ".raw()"
+      else p.name + ".handle().raw()"
+      end
     | let _: PtBitfield => p.name + ".value()"
     | let _: PtEnum => p.name + ".apply()"
     else p.name

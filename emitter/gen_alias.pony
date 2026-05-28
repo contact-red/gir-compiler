@@ -19,12 +19,18 @@
 // loaded package. We accept that — the user can either load Gdk's GIR
 // or hand-write a stub GdkRectangle in a sibling package.
 
+use "../doc_translate"
 use "../gir"
 
 
 primitive GenAlias
-  fun apply(qname: String val, node: GirNodeAlias): String val =>
-    let pony_name: String val = TypeNaming.pony_type_name(qname)
+  fun apply(
+    qname: String val,
+    node: GirNodeAlias,
+    translate_ctx: (TranslateContext val | None) = None)
+    : String val
+  =>
+    let pony_name: String val = TypeNaming.pony_type_name(node.target.c_type, qname)
     let target_gir = node.target.target.name
 
     let buf = recover iso String end
@@ -59,4 +65,5 @@ primitive GenAlias
       buf.append(pony_name)
       buf.append(" is Pointer[U8] tag\n")
     end
+    buf.append(DocstringWriter(node.target.doc, translate_ctx, "  "))
     consume buf

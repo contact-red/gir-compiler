@@ -8,6 +8,7 @@
 #   tools/bake_embedded.sh > emitter/embedded_resources.pony
 #
 # Inputs (hardcoded): embedded/gobject_runtime/handle.pony
+#                     embedded/gobject_runtime/pinned_runtime.pony
 #                     embedded/gtk/runtime.pony
 
 set -euo pipefail
@@ -59,12 +60,14 @@ primitive EmbeddedResources
     """
     recover val
       [
-        ("gobject_runtime/handle.pony", _gobject_runtime_handle())
-        ("gtk/runtime.pony", _gtk_runtime())
+        ("gobject_runtime/handle.pony",         _gobject_runtime_handle())
+        ("gobject_runtime/pinned_runtime.pony", _gobject_runtime_pinned())
+        ("gtk/runtime.pony",                    _gtk_runtime())
       ]
     end
 
 HEADER
 
-emit_file "_gobject_runtime_handle" "embedded/gobject_runtime/handle.pony"
-emit_file "_gtk_runtime"            "embedded/gtk/runtime.pony"
+emit_file "_gobject_runtime_handle"  "embedded/gobject_runtime/handle.pony"
+emit_file "_gobject_runtime_pinned"  "embedded/gobject_runtime/pinned_runtime.pony"
+emit_file "_gtk_runtime"             "embedded/gtk/runtime.pony"

@@ -50,12 +50,9 @@ type ActivateHandler is {(GtkApplication ref)} val
   signal fires. Runs synchronously inside a GtkRuntime behavior.
   """
 
-type CloseRequestHandler is {()} val
-  """
-  User-supplied closure invoked when a window's "close-request" signal
-  fires. Runs after the close has already been allowed (the trampoline
-  hard-codes a false return). Use this for cleanup logic.
-  """
+// CloseRequestHandler lives in gobject_runtime so generated bindings
+// in other packages can reference it through the PinnedRuntime
+// interface without importing gtk. See gobject_runtime/pinned_runtime.pony.
 
 
 // Bare-function trampolines. C ABI. Called by GTK on the pinned thread.
@@ -161,16 +158,22 @@ actor GtkRuntime
   be _dispatch_activate(sender: Pointer[U8] tag) =>
     try
       let handler = _activate_handlers(sender.usize())?
-      let app = GtkApplication._wrap(
+      let app = GtkApplication.wrap(
         GObjectHandle.adopt_borrowed(sender),
         this)
       handler(app)
     end
 
-  be _register_close_request(
+  be register_close_request(
     window_ptr: Pointer[U8] tag,
     handler: CloseRequestHandler)
   =>
+    """
+    Signature matches `PinnedRuntime.register_close_request` so a
+    `GtkRuntime tag` is structurally assignable to a
+    `PinnedRuntime tag`. Generated widget classes call this through
+    the PinnedRuntime interface.
+    """
     _close_request_handlers(window_ptr.usize()) = handler
     @g_signal_connect_data(
       window_ptr,
